@@ -1,0 +1,42 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+dist-ssr
+*.tsbuildinfo
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test / coverage
+coverage
+.nyc_output
+
+# Vite cache
+.vite
+vite.config.*.timestamp*
+
+# Env: keep committed defaults (.env, .env.development, .env.direct),
+# ignore personal overrides
+.env.local
+.env.*.local
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/*
+!.idea/.gitignore
+!.idea/modules.xml
+!.idea/react-cms-web.iml
+
+# Agent scratch / stray files
+.junie/
+acp

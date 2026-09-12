@@ -1,0 +1,92 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useContent } from '../../context/ContentContext';
+import { CommentStatusBadge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
+import { Select } from '../../components/ui/Select';
+import type { CommentStatus } from '../../types/comment';
+
+export function CommentsModeration() {
+  const { comments, getLocalizedPost, getUser, setCommentStatus, deleteComment } = useContent();
+  const [filter, setFilter] = useState<'all' | CommentStatus>('pending');
+
+  const filtered = [...comments]
+    .filter((c) => filter === 'all' || c.status === filter)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  return (
+    <div className="page">
+      <header className="page-header">
+        <div>
+          <h1 className="page-title">Comments</h1>
+          <p className="page-subtitle">Moderate reader comments across posts and courses</p>
+        </div>
+        <Select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as 'all' | CommentStatus)}
+          options={[
+            { value: 'pending', label: 'Pending' },
+            { value: 'approved', label: 'Approved' },
+            { value: 'spam', label: 'Spam' },
+            { value: 'all', label: 'All' },
+          ]}
+        />
+      </header>
+
+      <section className="card">
+        {filtered.length === 0 ? (
+          <p className="empty-state">No comments in this view.</p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Comment</th>
+                <th>Lang</th>
+                <th>Author</th>
+                <th>On</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((comment) => {
+                const author = getUser(comment.userId);
+                const post = getLocalizedPost(comment.postId);
+                return (
+                  <tr key={comment.id}>
+                    <td className="comment-cell">{comment.content}</td>
+                    <td className="text-muted">{comment.languageCode}</td>
+                    <td className="text-muted">{author ? `${author.firstName} ${author.lastName}` : 'Unknown'}</td>
+                    <td className="text-muted">
+                      {post ? <Link to={`/admin/posts/${post.id}`}>{post.title}</Link> : '—'}
+                    </td>
+                    <td>
+                      <CommentStatusBadge status={comment.status} />
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        {comment.status !== 'approved' && (
+                          <Button size="sm" variant="success" onClick={() => void setCommentStatus(comment.id, 'approved')}>
+                            Approve
+                          </Button>
+                        )}
+                        {comment.status !== 'spam' && (
+                          <Button size="sm" variant="warning" onClick={() => void setCommentStatus(comment.id, 'spam')}>
+                            Spam
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => void deleteComment(comment.id)}>
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
+  );
+}
