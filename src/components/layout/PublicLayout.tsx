@@ -22,7 +22,7 @@ function resolveMainMenu(
 }
 
 export function PublicLayout({ children }: { children: ReactNode }) {
-  const { settings, getLocalizedPostsByType } = useContent();
+  const { settings, getLocalizedPostsByType, isInitialLoading } = useContent();
   const { canAny } = useAuth();
   const t = useUiString();
 
@@ -74,39 +74,80 @@ export function PublicLayout({ children }: { children: ReactNode }) {
     <div className="public-site">
       <header className="public-header">
         <div className="public-header-inner">
-          <Link to="/" className="public-brand">
-            <SiteBrandMark
-              iconUrl={settings.siteIconUrl}
-              className="public-brand-logo"
-              alt={settings.siteName}
-            />
-            {settings.siteName}
-          </Link>
-          <nav className="public-nav">
-            {menuItems.map((item) => (
-              <NavLink key={item.key} to={item.to} end={item.end}>
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="public-header-actions">
-            {canOpenAdmin && (
-              <Link to="/admin" className="public-admin-link">
-                {t(UI_STRING_KEYS.nav_admin)}
+          {isInitialLoading ? (
+            <>
+              <div className="skeleton skeleton-brand" aria-hidden="true" />
+              <nav className="public-nav" aria-hidden="true">
+                <div className="skeleton skeleton-nav" />
+                <div className="skeleton skeleton-nav" />
+                <div className="skeleton skeleton-nav" />
+              </nav>
+            </>
+          ) : (
+            <>
+              <Link to="/" className="public-brand">
+                <SiteBrandMark
+                  iconUrl={settings.siteIconUrl}
+                  className="public-brand-logo"
+                  alt={settings.siteName}
+                />
+                {settings.siteName}
               </Link>
+              <nav className="public-nav">
+                {menuItems.map((item) => (
+                  <NavLink key={item.key} to={item.to} end={item.end}>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+            </>
+          )}
+          <div className="public-header-actions">
+            {isInitialLoading ? (
+              <>
+                <div className="skeleton skeleton-action" aria-hidden="true" />
+                <div className="skeleton skeleton-user" aria-hidden="true" />
+              </>
+            ) : (
+              <>
+                {canOpenAdmin && (
+                  <Link to="/admin" className="public-admin-link">
+                    {t(UI_STRING_KEYS.nav_admin)}
+                  </Link>
+                )}
+                <LanguageSwitcher />
+                <UserSwitcher />
+              </>
             )}
-            <LanguageSwitcher />
-            <UserSwitcher />
           </div>
         </div>
       </header>
 
-      <main className="public-main">{children}</main>
+      <main className="public-main">
+        {isInitialLoading ? (
+          <div className="public-skeleton" aria-busy="true" aria-label="Loading content">
+            <div className="skeleton skeleton-hero" />
+            <div className="skeleton skeleton-line" />
+            <div className="skeleton skeleton-line short" />
+            <div className="posts-grid">
+              <div className="skeleton skeleton-card" />
+              <div className="skeleton skeleton-card" />
+              <div className="skeleton skeleton-card" />
+            </div>
+          </div>
+        ) : (
+          children
+        )}
+      </main>
 
       <footer className="public-footer">
-        <p>
-          © {new Date().getFullYear()} {settings.siteName} — {settings.siteDescription}
-        </p>
+        {isInitialLoading ? (
+          <div className="skeleton skeleton-footer" aria-hidden="true" />
+        ) : (
+          <p>
+            © {new Date().getFullYear()} {settings.siteName} — {settings.siteDescription}
+          </p>
+        )}
       </footer>
     </div>
   );

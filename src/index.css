@@ -740,6 +740,32 @@ img.public-brand-logo {
 .not-found p { color: var(--color-text-muted); margin-bottom: 20px; max-width: 420px; }
 .not-found-actions { display: flex; gap: 10px; }
 
+/* ── Loading skeleton (prevents default-content flash) ─────────── */
+.public-skeleton { display: flex; flex-direction: column; gap: 16px; }
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-surface-alt);
+  border-radius: var(--radius);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
+  animation: skeleton-shimmer 1.4s infinite;
+}
+@keyframes skeleton-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skeleton-brand { width: 180px; height: 22px; }
+.skeleton-nav { width: 70px; height: 14px; display: inline-block; margin-right: 22px; }
+.skeleton-hero { height: 120px; border-radius: var(--radius-lg); }
+.skeleton-line { height: 16px; }
+.skeleton-line.short { width: 60%; }
+.skeleton-card { height: 140px; border-radius: var(--radius-lg); }
+.skeleton-footer { width: 280px; height: 14px; margin: 0 auto; }
+.skeleton-action { width: 60px; height: 28px; border-radius: 999px; }
+.skeleton-user { width: 120px; height: 38px; border-radius: 999px; }
+
 /* ── Premium Gate ──────────────────────────────────────────────── */
 .premium-gate { position: relative; }
 .premium-gate-teaser { filter: blur(2px); opacity: .5; pointer-events: none; user-select: none; margin-bottom: -20px; }

@@ -65,6 +65,7 @@ interface ContentContextValue {
   data: CMSData;
   language: LanguageCode;
   loading: boolean;
+  isInitialLoading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
 
@@ -250,6 +251,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const { language } = useLocale();
   const { token } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const isInitialLoading = loading && !hasLoaded;
   const [error, setError] = useState<string | null>(null);
   const [localizedPosts, setLocalizedPosts] = useState<LocalizedPost[]>([]);
   const [localizedLessons, setLocalizedLessons] = useState<LocalizedCourseLesson[]>([]);
@@ -353,6 +356,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load content from API');
     } finally {
+      setHasLoaded(true);
       setLoading(false);
     }
   }, [language, token]);
@@ -1002,6 +1006,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       data,
       language,
       loading,
+      isInitialLoading,
       error,
       refreshData,
       contentTypes,
@@ -1058,6 +1063,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       data,
       language,
       loading,
+      isInitialLoading,
       error,
       refreshData,
       contentTypes,

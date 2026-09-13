@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useContent } from '../../context/ContentContext';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 import { Avatar } from '../ui/Avatar';
@@ -10,7 +11,8 @@ import { userFullName } from '../../types/user';
 
 /** Account menu for the signed-in user (or guest). */
 export function UserSwitcher() {
-  const { currentUser, role, logout } = useAuth();
+  const { currentUser, role, logout, bootstrapping } = useAuth();
+  const { isInitialLoading } = useContent();
   const t = useUiString();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -25,6 +27,9 @@ export function UserSwitcher() {
 
   return (
     <div className="user-switcher" ref={ref}>
+      {bootstrapping || isInitialLoading ? (
+        <div className="skeleton skeleton-user" aria-label="Loading account" />
+      ) : (
       <button type="button" className="user-switcher-trigger" onClick={() => setOpen((o) => !o)}>
         {currentUser ? (
           <>
@@ -32,11 +37,12 @@ export function UserSwitcher() {
             <span className="user-switcher-name">{userFullName(currentUser)}</span>
           </>
         ) : (
-          <span className="user-switcher-name">{t(UI_STRING_KEYS.auth_guest)}</span>
+          <span className="user-switcher-name">{t(UI_STRING_KEYS.auth_guest, 'Guest')}</span>
         )}
         {role && <RoleBadge role={role.name} />}
         <IconChevronDown className="user-switcher-caret" />
       </button>
+      )}
 
       {open && (
         <div className="user-switcher-menu">
@@ -52,19 +58,19 @@ export function UserSwitcher() {
                 }}
               >
                 <IconLogout />
-                <span>{t(UI_STRING_KEYS.auth_sign_out)}</span>
+                <span>{t(UI_STRING_KEYS.auth_sign_out, 'Sign out')}</span>
               </button>
             </>
           ) : (
             <>
-              <p className="user-switcher-heading">{t(UI_STRING_KEYS.auth_guest)}</p>
+              <p className="user-switcher-heading">{t(UI_STRING_KEYS.auth_guest, 'Guest')}</p>
               <Link
                 to="/login"
                 className="user-switcher-item user-switcher-more"
                 onClick={() => setOpen(false)}
               >
                 <IconLogin />
-                <span>{t(UI_STRING_KEYS.auth_go_sign_in)}</span>
+                <span>{t(UI_STRING_KEYS.auth_go_sign_in, 'Sign in')}</span>
               </Link>
             </>
           )}
