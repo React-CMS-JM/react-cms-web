@@ -6,7 +6,7 @@ import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function CoursesList() {
-  const { getLocalizedPostsByType, getLocalizedLessonsByCourse } = useContent();
+  const { getLocalizedPostsByType } = useContent();
   const t = useUiString();
 
   const courses = getLocalizedPostsByType('course')
@@ -35,7 +35,7 @@ export function CoursesList() {
                 </div>
                 <p className="post-excerpt">{course.excerpt}</p>
                 <div className="post-meta">
-                  <span>{getLocalizedLessonsByCourse(course.id).length} lessons</span>
+                  <span>{course.lessonCount ?? 0} lessons</span>
                   <span>{course.viewCount.toLocaleString()} enrolled</span>
                 </div>
               </article>

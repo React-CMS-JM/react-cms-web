@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -107,6 +108,8 @@ interface ContentContextValue {
 
   courseLessons: CourseLesson[];
   getLocalizedLessonsByCourse: (courseId: string, lang?: LanguageCode) => LocalizedCourseLesson[];
+  /** Loads lessons for a course once (no-op if already loaded). Use on course/lesson pages. */
+  ensureLessonsLoaded: (courseId: string) => Promise<void>;
   getLocalizedLesson: (id: string, lang?: LanguageCode) => LocalizedCourseLesson | undefined;
   getLocalizedLessonBySlug: (
     courseId: string,
@@ -256,6 +259,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [localizedPosts, setLocalizedPosts] = useState<LocalizedPost[]>([]);
   const [localizedLessons, setLocalizedLessons] = useState<LocalizedCourseLesson[]>([]);
+  const lessonsLoadedRef = useRef(new Set<string>());
+  const lessonsLoadingRef = useRef(new Map<string, Promise<void>>());
   const [localizedCategories, setLocalizedCategories] = useState<LocalizedCategory[]>([]);
   const [localizedTags, setLocalizedTags] = useState<LocalizedTag[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -314,6 +319,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       setLocalizedPosts([...contentPosts, ...courses]);
       setPostMetadata([...contentMetadata, ...courseMetadata]);
       setLocalizedLessons([]);
+      lessonsLoadedRef.current.clear();
+      lessonsLoadingRef.current.clear();
 
       if (token) {
         try {
@@ -335,21 +342,6 @@ export function ContentProvider({ children }: { children: ReactNode }) {
         setRoles([]);
         setPermissions([]);
       }
-
-      // Lessons are only needed on course pages/admin — load after first paint.
-      void (async () => {
-        const lessonGroups = await Promise.all(
-          courses.map(async (course) => {
-            try {
-              const lessons = await coursesApi.listLessons(course.id, language);
-              return lessons.map(mapLocalizedLesson);
-            } catch {
-              return [] as LocalizedCourseLesson[];
-            }
-          }),
-        );
-        setLocalizedLessons(lessonGroups.flat());
-      })();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load content from API');
     } finally {
@@ -673,6 +665,39 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     [localizedLessons],
   );
 
+  const ensureLessonsLoaded = useCallback(
+    async (courseId: string) => {
+      if (!courseId || lessonsLoadedRef.current.has(courseId)) return;
+      const inflight = lessonsLoadingRef.current.get(courseId);
+      if (inflight) {
+        await inflight;
+        return;
+      }
+
+      const load = (async () => {
+        try {
+          const lessons = (await coursesApi.listLessons(courseId, language)).map(mapLocalizedLesson);
+          setLocalizedLessons((prev) => [
+            ...prev.filter((l) => l.courseId !== courseId),
+            ...lessons,
+          ]);
+          lessonsLoadedRef.current.add(courseId);
+          setLocalizedPosts((prev) =>
+            prev.map((p) => (p.id === courseId ? { ...p, lessonCount: lessons.length } : p)),
+          );
+        } catch {
+          // Leave unloaded so a later navigation can retry.
+        } finally {
+          lessonsLoadingRef.current.delete(courseId);
+        }
+      })();
+
+      lessonsLoadingRef.current.set(courseId, load);
+      await load;
+    },
+    [language],
+  );
+
   const getLocalizedLesson = useCallback(
     (id: string, _lang?: LanguageCode) => localizedLessons.find((l) => l.id === id),
     [localizedLessons],
@@ -703,6 +728,12 @@ export function ContentProvider({ children }: { children: ReactNode }) {
         }),
       );
       setLocalizedLessons((prev) => [...prev, created]);
+      lessonsLoadedRef.current.add(input.courseId);
+      setLocalizedPosts((prev) =>
+        prev.map((p) =>
+          p.id === input.courseId ? { ...p, lessonCount: (p.lessonCount ?? 0) + 1 } : p,
+        ),
+      );
       return created;
     },
     [],
@@ -752,11 +783,21 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteLesson = useCallback(async (id: string) => {
+    const existing = localizedLessons.find((l) => l.id === id);
     await coursesApi.deleteLessonById(id);
     setLocalizedLessons((prev) =>
       prev.filter((l) => l.id !== id && l.parentLessonId !== id),
     );
-  }, []);
+    if (existing) {
+      setLocalizedPosts((prev) =>
+        prev.map((p) =>
+          p.id === existing.courseId
+            ? { ...p, lessonCount: Math.max(0, (p.lessonCount ?? 1) - 1) }
+            : p,
+        ),
+      );
+    }
+  }, [localizedLessons]);
 
   const getLocalizedCategories = useCallback(
     (_lang?: LanguageCode) => localizedCategories,
@@ -1025,6 +1066,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       setMetadataForPost,
       courseLessons: data.courseLessons,
       getLocalizedLessonsByCourse,
+      ensureLessonsLoaded,
       getLocalizedLesson,
       getLocalizedLessonBySlug,
       createLesson,
@@ -1079,6 +1121,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       getMetadataForPost,
       setMetadataForPost,
       getLocalizedLessonsByCourse,
+      ensureLessonsLoaded,
       getLocalizedLesson,
       getLocalizedLessonBySlug,
       createLesson,

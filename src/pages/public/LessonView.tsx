@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { PremiumGate } from '../../components/content/PremiumGate';
@@ -7,12 +8,57 @@ import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function LessonView() {
   const { slug, lessonSlug } = useParams<{ slug: string; lessonSlug: string }>();
-  const { getLocalizedPostBySlug, getLocalizedLessonBySlug, getLocalizedLessonsByCourse } = useContent();
+  const {
+    getLocalizedPostBySlug,
+    getLocalizedLessonBySlug,
+    getLocalizedLessonsByCourse,
+    ensureLessonsLoaded,
+  } = useContent();
   const t = useUiString();
   const course = slug ? getLocalizedPostBySlug(slug, 'course') : undefined;
-  const lesson = course && lessonSlug ? getLocalizedLessonBySlug(course.id, lessonSlug) : undefined;
+  const [lessonsReady, setLessonsReady] = useState(false);
 
-  if (!course || course.status !== 'published' || !lesson) {
+  useEffect(() => {
+    if (!course || course.status !== 'published') {
+      setLessonsReady(false);
+      return;
+    }
+    let cancelled = false;
+    setLessonsReady(false);
+    void ensureLessonsLoaded(course.id).then(() => {
+      if (!cancelled) setLessonsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [course, ensureLessonsLoaded]);
+
+  const lesson =
+    course && lessonSlug && lessonsReady
+      ? getLocalizedLessonBySlug(course.id, lessonSlug)
+      : undefined;
+
+  if (!course || course.status !== 'published') {
+    return (
+      <PublicLayout>
+        <div className="not-found">
+          <h1>{t(UI_STRING_KEYS.common_not_found_title)}</h1>
+          <p>{t(UI_STRING_KEYS.common_not_found_body)}</p>
+          <Link to="/courses">{t(UI_STRING_KEYS.common_back_courses)}</Link>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  if (!lessonsReady) {
+    return (
+      <PublicLayout>
+        <p className="empty-state">Loading lesson…</p>
+      </PublicLayout>
+    );
+  }
+
+  if (!lesson) {
     return (
       <PublicLayout>
         <div className="not-found">

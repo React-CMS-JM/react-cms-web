@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useContent } from '../../context/ContentContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -10,10 +10,22 @@ import type { AccessLevel, LocalizedCourseLesson } from '../../types/content';
 import { slugify } from '../../types/content';
 
 export function LessonsManager({ courseId }: { courseId: string }) {
-  const { getLocalizedLessonsByCourse, createLesson, updateLesson, deleteLesson, language } = useContent();
+  const {
+    getLocalizedLessonsByCourse,
+    ensureLessonsLoaded,
+    createLesson,
+    updateLesson,
+    deleteLesson,
+    language,
+  } = useContent();
   const lessons = getLocalizedLessonsByCourse(courseId);
   const topLevel = lessons.filter((l) => !l.parentLessonId);
   const childrenOf = (id: string) => lessons.filter((l) => l.parentLessonId === id);
+
+  useEffect(() => {
+    void ensureLessonsLoaded(courseId);
+  }, [courseId, ensureLessonsLoaded]);
+
 
   const [editing, setEditing] = useState<LocalizedCourseLesson | null>(null);
   const [showForm, setShowForm] = useState(false);

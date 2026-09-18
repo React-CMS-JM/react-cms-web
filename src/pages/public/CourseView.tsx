@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { AccessBadge } from '../../components/ui/Badge';
@@ -12,11 +12,17 @@ import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function CourseView() {
   const { slug } = useParams<{ slug: string }>();
-  const { getLocalizedPostBySlug, getLocalizedLessonsByCourse, incrementViewCount } = useContent();
+  const {
+    getLocalizedPostBySlug,
+    getLocalizedLessonsByCourse,
+    ensureLessonsLoaded,
+    incrementViewCount,
+  } = useContent();
   const { can } = useAuth();
   const t = useUiString();
   const course = slug ? getLocalizedPostBySlug(slug, 'course') : undefined;
   const counted = useRef(false);
+  const [lessonsReady, setLessonsReady] = useState(false);
 
   useEffect(() => {
     if (course && course.status === 'published' && !counted.current) {
@@ -24,6 +30,21 @@ export function CourseView() {
       incrementViewCount(course.id);
     }
   }, [course, incrementViewCount]);
+
+  useEffect(() => {
+    if (!course || course.status !== 'published') {
+      setLessonsReady(false);
+      return;
+    }
+    let cancelled = false;
+    setLessonsReady(false);
+    void ensureLessonsLoaded(course.id).then(() => {
+      if (!cancelled) setLessonsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [course, ensureLessonsLoaded]);
 
   if (!course || course.status !== 'published') {
     return (
@@ -63,7 +84,7 @@ export function CourseView() {
             <AccessBadge level={course.accessLevel} />
           </div>
           <div className="post-meta">
-            <span>{lessons.length} lessons</span>
+            <span>{course.lessonCount ?? lessons.length} lessons</span>
             <span>{course.viewCount.toLocaleString()} enrolled</span>
           </div>
         </header>
@@ -72,7 +93,9 @@ export function CourseView() {
 
         <section className="lesson-list">
           <h2>Course Content</h2>
-          {topLevel.length === 0 ? (
+          {!lessonsReady ? (
+            <p className="empty-state">Loading lessons…</p>
+          ) : topLevel.length === 0 ? (
             <p className="empty-state">Lessons coming soon.</p>
           ) : (
             topLevel.map((lesson) => renderLesson(lesson))
