@@ -9,9 +9,8 @@
 #   VITE_CONTENT_API_URL
 #   VITE_COURSES_API_URL
 #
-# Targets:
+# Target:
 #   main → Worker "react-cms-web"
-#   dev  → Worker "react-cms-web-dev"
 
 name: Deploy to Cloudflare Workers
 
@@ -19,16 +18,15 @@ on:
   push:
     branches:
       - main
-      - dev
   workflow_dispatch:
 
 concurrency:
-  group: cloudflare-deploy-${{ github.ref_name }}
+  group: cloudflare-deploy-main
   cancel-in-progress: true
 
 jobs:
   deploy:
-    name: Build and deploy (${{ github.ref_name }})
+    name: Build and deploy (main)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -66,7 +64,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: ${{ github.ref_name == 'dev' && 'deploy --env dev' || 'deploy --env=""' }}
+          command: deploy
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           packageManager: npm
 
