@@ -1,5 +1,0 @@
----
-alwaysApply: true
----
-
-Always use the SQL file located in '../sql-scripts/react-cms-create-tables-v02.sql' as source of truth for our database structure.
