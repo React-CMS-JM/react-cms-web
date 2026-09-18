@@ -58,9 +58,21 @@ import type {
 } from '../types/taxonomy';
 import type { User, UserInput } from '../types/user';
 import type { ParamUiStringI18n } from '../types/paramUi';
-import type { Permission, Role } from '../types/rbac';
+import type { Permission, PermissionName, Role } from '../types/rbac';
 import { useAuth } from './AuthContext';
 import { useLocale } from './LocaleContext';
+
+/** Staff permissions that unlock the admin shell (matches PublicLayout). */
+const ADMIN_ACCESS_PERMISSIONS: PermissionName[] = [
+  'content:create',
+  'content:edit_own',
+  'content:edit_all',
+  'content:publish',
+  'comment:moderate',
+  'user:ban',
+];
+
+const ADMIN_UI_COMPONENT = 'AdminSidebar';
 
 interface ContentContextValue {
   data: CMSData;
@@ -256,7 +268,8 @@ function upsertLocalizedPost(list: LocalizedPost[], next: LocalizedPost): Locali
 
 export function ContentProvider({ children }: { children: ReactNode }) {
   const { language } = useLocale();
-  const { token } = useAuth();
+  const { token, canAny } = useAuth();
+  const canOpenAdmin = canAny(ADMIN_ACCESS_PERMISSIONS);
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
   const isInitialLoading = loading && !hasLoaded;
@@ -289,19 +302,28 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [types, settingsRes, uiStrings, categoriesRes, tagsRes] =
+      const [types, settingsRes, rawPublicUiStrings, categoriesRes, tagsRes, adminUiStrings] =
         await Promise.all([
           contentApi.listContentTypes(),
           contentApi.getSettings(language),
+          // Default list excludes AdminSidebar on the content service (also filtered client-side).
           contentApi.listUiStrings({ lang: language }),
           contentApi.listCategories(language),
           contentApi.listTags(language),
+          canOpenAdmin
+            ? contentApi.listUiStrings({ lang: language, component: ADMIN_UI_COMPONENT }).catch(() => [])
+            : Promise.resolve([]),
         ]);
+
+      const publicUiStrings = rawPublicUiStrings.filter(
+        (row) => row.uiComponent !== ADMIN_UI_COMPONENT,
+      );
+      const uiStringDtos = [...publicUiStrings, ...adminUiStrings];
 
       const mappedTypes = types.map(mapContentType);
       setContentTypes(mappedTypes);
       setSettings(mapSiteSettings(settingsRes));
-      setParamUiStringI18n(uiStrings.map(mapUiString));
+      setParamUiStringI18n(uiStringDtos.map(mapUiString));
       setLocalizedCategories(categoriesRes.map(mapCategory));
       setLocalizedTags(tagsRes.map(mapTag));
       setComments([]);
@@ -359,7 +381,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       setHasLoaded(true);
       setLoading(false);
     }
-  }, [language, token]);
+  }, [language, token, canOpenAdmin]);
 
   useEffect(() => {
     void refreshData();
