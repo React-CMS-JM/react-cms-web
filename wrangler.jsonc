@@ -1,0 +1,31 @@
+/**
+ * Cloudflare Workers config for the React CMS frontend (static Vite SPA).
+ *
+ * Workers:
+ * - react-cms-web      → production (main branch)
+ * - react-cms-web-dev  → development/staging (dev branch)
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "react-cms-web",
+	"compatibility_date": "2026-09-17",
+	"assets": {
+		"directory": "./dist",
+		"not_found_handling": "single-page-application"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"env": {
+		"dev": {
+			"name": "react-cms-web-dev",
+			"assets": {
+				"directory": "./dist",
+				"not_found_handling": "single-page-application"
+			},
+			"observability": {
+				"enabled": true
+			}
+		}
+	}
+}

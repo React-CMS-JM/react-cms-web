@@ -22,7 +22,12 @@ coverage
 .vite
 vite.config.*.timestamp*
 
-# Env: keep committed defaults (.env, .env.development, .env.direct),
+# Cloudflare Wrangler local state
+.wrangler
+.dev.vars
+.dev.vars.*
+
+# Env: keep committed defaults (.env, .env.development, .env.direct, .env.production),
 # ignore personal overrides
 .env.local
 .env.*.local
