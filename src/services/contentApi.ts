@@ -42,6 +42,7 @@ export interface LocalizedPostDto {
   excerpt: string | null;
   metaTitle: string | null;
   metaDescription: string | null;
+  metadata?: PostMetadataDto[];
 }
 
 export interface ContentTypeDto {

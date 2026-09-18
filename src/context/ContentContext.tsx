@@ -299,39 +299,21 @@ export function ContentProvider({ children }: { children: ReactNode }) {
           contentApi.listPosts({ type, lang: language, page: 0, size: 100 }),
         ),
       );
-      const contentPosts = postPages.flatMap((page) => page.items.map(mapLocalizedPost));
-
-      const courses = (await coursesApi.listCourses({ lang: language })).map(mapLocalizedCourse);
-      const allPosts = [...contentPosts, ...courses];
-      setLocalizedPosts(allPosts);
-
-      const lessonGroups = await Promise.all(
-        courses.map(async (course) => {
-          try {
-            const lessons = await coursesApi.listLessons(course.id, language);
-            return lessons.map(mapLocalizedLesson);
-          } catch {
-            return [] as LocalizedCourseLesson[];
-          }
-        }),
+      const postDtos = postPages.flatMap((page) => page.items);
+      const contentPosts = postDtos.map(mapLocalizedPost);
+      const contentMetadata = postDtos.flatMap((dto) =>
+        (dto.metadata ?? []).map(mapMetadata),
       );
-      setLocalizedLessons(lessonGroups.flat());
 
-      const metadataGroups = await Promise.all(
-        allPosts.map(async (post) => {
-          try {
-            const isCourse = mappedTypes.find((t) => t.id === post.contentTypeId)?.slug === 'course'
-              || post.contentTypeId === mappedTypes.find((t) => t.slug === 'course')?.id;
-            if (isCourse || courses.some((c) => c.id === post.id)) {
-              return (await coursesApi.getMetadata(post.id)).map(mapCourseMetadata);
-            }
-            return (await contentApi.getMetadata(post.id)).map(mapMetadata);
-          } catch {
-            return [] as PostMetadata[];
-          }
-        }),
+      const courseDtos = await coursesApi.listCourses({ lang: language });
+      const courses = courseDtos.map(mapLocalizedCourse);
+      const courseMetadata = courseDtos.flatMap((dto) =>
+        (dto.metadata ?? []).map(mapCourseMetadata),
       );
-      setPostMetadata(metadataGroups.flat());
+
+      setLocalizedPosts([...contentPosts, ...courses]);
+      setPostMetadata([...contentMetadata, ...courseMetadata]);
+      setLocalizedLessons([]);
 
       if (token) {
         try {
@@ -353,6 +335,21 @@ export function ContentProvider({ children }: { children: ReactNode }) {
         setRoles([]);
         setPermissions([]);
       }
+
+      // Lessons are only needed on course pages/admin — load after first paint.
+      void (async () => {
+        const lessonGroups = await Promise.all(
+          courses.map(async (course) => {
+            try {
+              const lessons = await coursesApi.listLessons(course.id, language);
+              return lessons.map(mapLocalizedLesson);
+            } catch {
+              return [] as LocalizedCourseLesson[];
+            }
+          }),
+        );
+        setLocalizedLessons(lessonGroups.flat());
+      })();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load content from API');
     } finally {
