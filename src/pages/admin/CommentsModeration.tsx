@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useContent } from '../../context/ContentContext';
 import { CommentStatusBadge } from '../../components/ui/Badge';
@@ -7,8 +7,19 @@ import { Select } from '../../components/ui/Select';
 import type { CommentStatus } from '../../types/comment';
 
 export function CommentsModeration() {
-  const { comments, getLocalizedPost, getUser, setCommentStatus, deleteComment } = useContent();
+  const {
+    comments,
+    ensureCommentsLoaded,
+    getLocalizedPost,
+    getUser,
+    setCommentStatus,
+    deleteComment,
+  } = useContent();
   const [filter, setFilter] = useState<'all' | CommentStatus>('pending');
+
+  useEffect(() => {
+    void ensureCommentsLoaded();
+  }, [ensureCommentsLoaded]);
 
   const filtered = [...comments]
     .filter((c) => filter === 'all' || c.status === filter)

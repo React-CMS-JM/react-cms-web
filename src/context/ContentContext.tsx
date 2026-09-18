@@ -153,6 +153,10 @@ interface ContentContextValue {
 
   comments: Comment[];
   getCommentsByPost: (postId: string) => Comment[];
+  /** Loads all comments once (admin moderation / dashboard). */
+  ensureCommentsLoaded: () => Promise<void>;
+  /** Loads comments for one post (public CommentsSection). */
+  ensureCommentsForPost: (postId: string) => Promise<void>;
   createComment: (input: CommentInput) => Promise<Comment>;
   setCommentStatus: (id: string, status: CommentStatus) => Promise<void>;
   deleteComment: (id: string) => Promise<void>;
@@ -264,6 +268,10 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const [localizedCategories, setLocalizedCategories] = useState<LocalizedCategory[]>([]);
   const [localizedTags, setLocalizedTags] = useState<LocalizedTag[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
+  const commentsFullyLoadedRef = useRef(false);
+  const commentsLoadingRef = useRef<Promise<void> | null>(null);
+  const commentsLoadedByPostRef = useRef(new Set<string>());
+  const commentsLoadingByPostRef = useRef(new Map<string, Promise<void>>());
   const [postMetadata, setPostMetadata] = useState<PostMetadata[]>([]);
   const [contentTypes, setContentTypes] = useState<CMSData['contentTypes']>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -281,14 +289,13 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [types, settingsRes, uiStrings, categoriesRes, tagsRes, commentsRes] =
+      const [types, settingsRes, uiStrings, categoriesRes, tagsRes] =
         await Promise.all([
           contentApi.listContentTypes(),
           contentApi.getSettings(language),
           contentApi.listUiStrings({ lang: language }),
           contentApi.listCategories(language),
           contentApi.listTags(language),
-          contentApi.listComments(),
         ]);
 
       const mappedTypes = types.map(mapContentType);
@@ -297,7 +304,11 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       setParamUiStringI18n(uiStrings.map(mapUiString));
       setLocalizedCategories(categoriesRes.map(mapCategory));
       setLocalizedTags(tagsRes.map(mapTag));
-      setComments(commentsRes.map(mapComment));
+      setComments([]);
+      commentsFullyLoadedRef.current = false;
+      commentsLoadingRef.current = null;
+      commentsLoadedByPostRef.current.clear();
+      commentsLoadingByPostRef.current.clear();
 
       const postPages = await Promise.all(
         CONTENT_TYPE_SLUGS.map((type) =>
@@ -908,6 +919,56 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     [comments],
   );
 
+  const ensureCommentsLoaded = useCallback(async () => {
+    if (commentsFullyLoadedRef.current) return;
+    if (commentsLoadingRef.current) {
+      await commentsLoadingRef.current;
+      return;
+    }
+
+    const load = (async () => {
+      try {
+        const rows = (await contentApi.listComments()).map(mapComment);
+        setComments(rows);
+        commentsFullyLoadedRef.current = true;
+        commentsLoadedByPostRef.current = new Set(rows.map((c) => c.postId));
+      } catch {
+        // Leave unloaded so a later navigation can retry.
+      } finally {
+        commentsLoadingRef.current = null;
+      }
+    })();
+
+    commentsLoadingRef.current = load;
+    await load;
+  }, []);
+
+  const ensureCommentsForPost = useCallback(async (postId: string) => {
+    if (!postId || commentsFullyLoadedRef.current || commentsLoadedByPostRef.current.has(postId)) {
+      return;
+    }
+    const inflight = commentsLoadingByPostRef.current.get(postId);
+    if (inflight) {
+      await inflight;
+      return;
+    }
+
+    const load = (async () => {
+      try {
+        const rows = (await contentApi.listComments({ postId })).map(mapComment);
+        setComments((prev) => [...prev.filter((c) => c.postId !== postId), ...rows]);
+        commentsLoadedByPostRef.current.add(postId);
+      } catch {
+        // Leave unloaded so a later navigation can retry.
+      } finally {
+        commentsLoadingByPostRef.current.delete(postId);
+      }
+    })();
+
+    commentsLoadingByPostRef.current.set(postId, load);
+    await load;
+  }, []);
+
   const createComment = useCallback(async (input: CommentInput): Promise<Comment> => {
     const created = mapComment(
       await contentApi.createComment({
@@ -920,6 +981,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       }),
     );
     setComments((prev) => [...prev, created]);
+    commentsLoadedByPostRef.current.add(input.postId);
     return created;
   }, []);
 
@@ -1084,6 +1146,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       deleteTag,
       comments,
       getCommentsByPost,
+      ensureCommentsLoaded,
+      ensureCommentsForPost,
       createComment,
       setCommentStatus,
       deleteComment,
@@ -1137,6 +1201,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       deleteTag,
       comments,
       getCommentsByPost,
+      ensureCommentsLoaded,
+      ensureCommentsForPost,
       createComment,
       setCommentStatus,
       deleteComment,

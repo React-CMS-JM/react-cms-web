@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useContent } from '../../context/ContentContext';
@@ -17,8 +18,19 @@ const ADMIN_PATH_BY_TYPE: Record<ContentTypeSlug, string> = {
 const ALL_TYPE_SLUGS: ContentTypeSlug[] = ['post', 'page', 'course', 'service', 'product'];
 
 export function Dashboard() {
-  const { comments, users, getUser, contentTypes, getLocalizedPostsByType } = useContent();
+  const {
+    comments,
+    ensureCommentsLoaded,
+    users,
+    getUser,
+    contentTypes,
+    getLocalizedPostsByType,
+  } = useContent();
   const { currentUser, can, role } = useAuth();
+
+  useEffect(() => {
+    void ensureCommentsLoaded();
+  }, [ensureCommentsLoaded]);
 
   const canEditAll = can('content:edit_all');
 
