@@ -10,8 +10,13 @@ import type {
   PostStatus,
 } from '../types/content';
 import type { ParamUiStringI18n } from '../types/paramUi';
-import type { SiteSettings } from '../types/settings';
-import { DEFAULT_SETTINGS, resolveHomeHero } from '../types/settings';
+import {
+  DEFAULT_HOME_SECTION_LIMITS,
+  DEFAULT_SETTINGS,
+  resolveHomeHero,
+  type HomeSectionId,
+  type SiteSettings,
+} from '../types/settings';
 import type { LocalizedCategory, LocalizedTag } from '../types/taxonomy';
 import { apiRequest, withQuery } from './httpClient';
 
@@ -227,7 +232,15 @@ export function mapSiteSettings(dto: Partial<SiteSettings> | null | undefined): 
     postsPerPage: dto.postsPerPage ?? DEFAULT_SETTINGS.postsPerPage,
     homeHero: resolveHomeHero(dto.homeHero),
     homeSections: dto.homeSections?.length
-      ? dto.homeSections
+      ? dto.homeSections.map((section) => {
+          const id = section.id as HomeSectionId;
+          const fallback = DEFAULT_HOME_SECTION_LIMITS[id] ?? 6;
+          const limit = section.itemLimit ?? fallback;
+          return {
+            ...section,
+            itemLimit: !Number.isFinite(limit) || limit < 1 ? 1 : Math.min(50, Math.floor(limit)),
+          };
+        })
       : DEFAULT_SETTINGS.homeSections.map((s) => ({ ...s })),
     mainMenu: dto.mainMenu?.length
       ? dto.mainMenu

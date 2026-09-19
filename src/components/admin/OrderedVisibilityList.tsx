@@ -6,12 +6,17 @@ interface OrderedVisibilityListProps<T extends string> {
   items: VisibilityOrderItem<T>[];
   labels: Record<T, string>;
   onChange: (items: VisibilityOrderItem<T>[]) => void;
+  /** When true, show an editable per-row item limit (homepage sections). */
+  showItemLimit?: boolean;
+  defaultItemLimits?: Partial<Record<T, number>>;
 }
 
 export function OrderedVisibilityList<T extends string>({
   items,
   labels,
   onChange,
+  showItemLimit = false,
+  defaultItemLimits,
 }: OrderedVisibilityListProps<T>) {
   const move = (index: number, delta: number) => {
     const nextIndex = index + delta;
@@ -29,6 +34,16 @@ export function OrderedVisibilityList<T extends string>({
     onChange(next);
   };
 
+  const setItemLimit = (index: number, raw: string) => {
+    const parsed = Number.parseInt(raw, 10);
+    const fallback = defaultItemLimits?.[items[index].id] ?? 6;
+    const nextLimit = Number.isFinite(parsed) ? Math.min(50, Math.max(1, parsed)) : fallback;
+    const next = items.map((item, i) =>
+      i === index ? { ...item, itemLimit: nextLimit } : item,
+    );
+    onChange(next);
+  };
+
   return (
     <ul className="ordered-visibility-list">
       {items.map((item, index) => (
@@ -41,6 +56,19 @@ export function OrderedVisibilityList<T extends string>({
             />
             <span>{labels[item.id]}</span>
           </label>
+          {showItemLimit && (
+            <label className="ordered-visibility-limit">
+              <span className="text-muted">Show</span>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={item.itemLimit ?? defaultItemLimits?.[item.id] ?? 6}
+                onChange={(e) => setItemLimit(index, e.target.value)}
+                aria-label={`${labels[item.id]} item limit`}
+              />
+            </label>
+          )}
           <div className="ordered-visibility-actions">
             <Button
               type="button"

@@ -594,6 +594,21 @@ img.site-icon-preview-mark {
   background: var(--color-bg-alt);
 }
 .ordered-visibility-check { margin: 0; flex: 1; }
+.ordered-visibility-limit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.ordered-visibility-limit input {
+  width: 4.25rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: inherit;
+}
 .ordered-visibility-actions { display: flex; gap: 2px; }
 .ordered-visibility-actions .btn { padding: 4px 6px; }
 

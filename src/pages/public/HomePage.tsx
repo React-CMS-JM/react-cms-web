@@ -9,6 +9,7 @@ import { UI_STRING_KEYS } from '../../types/paramUi';
 import {
   DEFAULT_HOME_SECTIONS,
   resolveHomeHero,
+  resolveHomeSectionLimit,
   type HomeSectionId,
   type VisibilityOrderItem,
 } from '../../types/settings';
@@ -16,7 +17,7 @@ import {
 function resolveHomeSections(
   configured: VisibilityOrderItem<HomeSectionId>[] | undefined,
 ): VisibilityOrderItem<HomeSectionId>[] {
-  if (!configured?.length) return DEFAULT_HOME_SECTIONS;
+  if (!configured?.length) return DEFAULT_HOME_SECTIONS.map((s) => ({ ...s }));
   const known = new Set(DEFAULT_HOME_SECTIONS.map((s) => s.id));
   return configured.filter((item) => known.has(item.id));
 }
@@ -25,6 +26,11 @@ export function HomePage() {
   const { settings, getLocalizedPostsByType, getMetadataForPost, language } = useContent();
   const t = useUiString();
   const homeHero = resolveHomeHero(settings.homeHero);
+  const configuredSections = resolveHomeSections(settings.homeSections);
+  const sectionById = Object.fromEntries(configuredSections.map((s) => [s.id, s])) as Record<
+    HomeSectionId,
+    VisibilityOrderItem<HomeSectionId> | undefined
+  >;
 
   const welcomePage = getLocalizedPostsByType('page').find(
     (p) => p.id === 'page-home' && p.status === 'published',
@@ -33,21 +39,22 @@ export function HomePage() {
   const services = getLocalizedPostsByType('service')
     .filter((p) => p.status === 'published')
     .sort((a, b) => a.title.localeCompare(b.title))
-    .slice(0, 5);
+    .slice(0, resolveHomeSectionLimit(sectionById.services, 'services'));
 
   const products = getLocalizedPostsByType('product')
     .filter((p) => p.status === 'published')
-    .sort((a, b) => a.title.localeCompare(b.title));
+    .sort((a, b) => a.title.localeCompare(b.title))
+    .slice(0, resolveHomeSectionLimit(sectionById.products, 'products'));
 
   const latestPosts = getLocalizedPostsByType('post')
     .filter((p) => p.status === 'published')
     .sort((a, b) => new Date(b.publishedAt ?? 0).getTime() - new Date(a.publishedAt ?? 0).getTime())
-    .slice(0, settings.postsPerPage);
+    .slice(0, resolveHomeSectionLimit(sectionById.blog, 'blog'));
 
   const featuredCourses = getLocalizedPostsByType('course')
     .filter((p) => p.status === 'published')
     .sort((a, b) => b.viewCount - a.viewCount)
-    .slice(0, 3);
+    .slice(0, resolveHomeSectionLimit(sectionById.courses, 'courses'));
 
   const sectionContent: Record<HomeSectionId, ReactNode> = {
     services:
@@ -169,7 +176,7 @@ export function HomePage() {
       ) : null,
   };
 
-  const orderedSections = resolveHomeSections(settings.homeSections).filter(
+  const orderedSections = configuredSections.filter(
     (item) => item.visible && sectionContent[item.id],
   );
 
