@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useContent } from '../../context/ContentContext';
@@ -27,8 +28,12 @@ export function ContentList({
   extraColumnHeader,
   extraColumn,
 }: ContentListProps) {
-  const { getLocalizedPostsByType, getUser } = useContent();
+  const { getLocalizedPostsByType, getUser, ensureTypeCatalog } = useContent();
   const { can, currentUser } = useAuth();
+
+  useEffect(() => {
+    void ensureTypeCatalog(typeSlug);
+  }, [ensureTypeCatalog, typeSlug]);
 
   const canEditAll = can('content:edit_all');
   const canEditOwn = can('content:edit_own');

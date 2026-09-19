@@ -14,6 +14,7 @@ export function CourseView() {
   const { slug } = useParams<{ slug: string }>();
   const {
     getLocalizedPostBySlug,
+    ensurePostBySlug,
     getLocalizedLessonsByCourse,
     ensureLessonsLoaded,
     incrementViewCount,
@@ -23,6 +24,22 @@ export function CourseView() {
   const course = slug ? getLocalizedPostBySlug(slug, 'course') : undefined;
   const counted = useRef(false);
   const [lessonsReady, setLessonsReady] = useState(false);
+  const [resolving, setResolving] = useState(!!slug && !course);
+
+  useEffect(() => {
+    if (!slug || course) {
+      setResolving(false);
+      return;
+    }
+    let cancelled = false;
+    setResolving(true);
+    void ensurePostBySlug(slug, 'course').finally(() => {
+      if (!cancelled) setResolving(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, course, ensurePostBySlug]);
 
   useEffect(() => {
     if (course && course.status === 'published' && !counted.current) {
@@ -45,6 +62,14 @@ export function CourseView() {
       cancelled = true;
     };
   }, [course, ensureLessonsLoaded]);
+
+  if (resolving) {
+    return (
+      <PublicLayout>
+        <p className="empty-state">Loading…</p>
+      </PublicLayout>
+    );
+  }
 
   if (!course || course.status !== 'published') {
     return (

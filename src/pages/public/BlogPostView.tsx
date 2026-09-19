@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { AccessBadge } from '../../components/ui/Badge';
@@ -12,13 +12,35 @@ import { userFullName } from '../../types/user';
 
 export function BlogPostView() {
   const { slug } = useParams<{ slug: string }>();
-  const { getLocalizedPostBySlug, incrementViewCount, getUser, getLocalizedCategories, getLocalizedTags } =
-    useContent();
+  const {
+    getLocalizedPostBySlug,
+    ensurePostBySlug,
+    incrementViewCount,
+    getUser,
+    getLocalizedCategories,
+    getLocalizedTags,
+  } = useContent();
   const t = useUiString();
   const post = slug ? getLocalizedPostBySlug(slug, 'post') : undefined;
   const localizedCategories = getLocalizedCategories();
   const localizedTags = getLocalizedTags();
   const counted = useRef(false);
+  const [resolving, setResolving] = useState(!!slug && !post);
+
+  useEffect(() => {
+    if (!slug || post) {
+      setResolving(false);
+      return;
+    }
+    let cancelled = false;
+    setResolving(true);
+    void ensurePostBySlug(slug, 'post').finally(() => {
+      if (!cancelled) setResolving(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, post, ensurePostBySlug]);
 
   useEffect(() => {
     if (post && post.status === 'published' && !counted.current) {
@@ -26,6 +48,14 @@ export function BlogPostView() {
       incrementViewCount(post.id);
     }
   }, [post, incrementViewCount]);
+
+  if (resolving) {
+    return (
+      <PublicLayout>
+        <p className="empty-state">Loading…</p>
+      </PublicLayout>
+    );
+  }
 
   if (!post || post.status !== 'published') {
     return (

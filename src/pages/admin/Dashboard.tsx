@@ -21,6 +21,7 @@ export function Dashboard() {
   const {
     comments,
     ensureCommentsLoaded,
+    ensureTypeCatalog,
     users,
     getUser,
     contentTypes,
@@ -31,6 +32,12 @@ export function Dashboard() {
   useEffect(() => {
     void ensureCommentsLoaded();
   }, [ensureCommentsLoaded]);
+
+  useEffect(() => {
+    for (const slug of ALL_TYPE_SLUGS) {
+      void ensureTypeCatalog(slug);
+    }
+  }, [ensureTypeCatalog]);
 
   const canEditAll = can('content:edit_all');
 

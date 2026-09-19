@@ -10,6 +10,7 @@ import type {
 import {
   mapLocalizedPost,
   type LocalizedPostDto,
+  type PageResult,
   type PostMetadataDto,
 } from './contentApi';
 import { apiRequest, withQuery } from './httpClient';
@@ -117,10 +118,12 @@ export function mapCourseMetadata(dto: PostMetadataDto): PostMetadata {
 }
 
 export const coursesApi = {
-  listCourses(params?: { status?: string; lang?: string }) {
-    return apiRequest<LocalizedCourseDto[]>(base(), withQuery('/api/courses', params), {
-      auth: false,
-    });
+  listCourses(params?: { status?: string; lang?: string; page?: number; size?: number }) {
+    return apiRequest<PageResult<LocalizedCourseDto>>(
+      base(),
+      withQuery('/api/courses', params),
+      { auth: false },
+    );
   },
 
   getCourse(id: string, lang?: string) {

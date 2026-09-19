@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { HeroCtaLink } from '../../components/public/HeroCtaLink';
 import { AccessBadge } from '../../components/ui/Badge';
 import { useContent } from '../../context/ContentContext';
 import { useUiString } from '../../hooks/useUiString';
+import type { LocalizedPost } from '../../types/content';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 import {
   DEFAULT_HOME_SECTIONS,
@@ -22,39 +23,71 @@ function resolveHomeSections(
   return configured.filter((item) => known.has(item.id));
 }
 
+const SECTION_TYPE: Record<Exclude<HomeSectionId, 'courses'>, 'post' | 'product' | 'service'> = {
+  blog: 'post',
+  products: 'product',
+  services: 'service',
+};
+
 export function HomePage() {
-  const { settings, getLocalizedPostsByType, getMetadataForPost, language } = useContent();
+  const {
+    settings,
+    getLocalizedPostsByType,
+    getMetadataForPost,
+    language,
+    fetchPostsPage,
+    fetchCoursesPage,
+  } = useContent();
   const t = useUiString();
   const homeHero = resolveHomeHero(settings.homeHero);
-  const configuredSections = resolveHomeSections(settings.homeSections);
-  const sectionById = Object.fromEntries(configuredSections.map((s) => [s.id, s])) as Record<
-    HomeSectionId,
-    VisibilityOrderItem<HomeSectionId> | undefined
-  >;
+  const configuredSections = useMemo(
+    () => resolveHomeSections(settings.homeSections),
+    [settings.homeSections],
+  );
+
+  const [services, setServices] = useState<LocalizedPost[]>([]);
+  const [products, setProducts] = useState<LocalizedPost[]>([]);
+  const [latestPosts, setLatestPosts] = useState<LocalizedPost[]>([]);
+  const [featuredCourses, setFeaturedCourses] = useState<LocalizedPost[]>([]);
 
   const welcomePage = getLocalizedPostsByType('page').find(
     (p) => p.id === 'page-home' && p.status === 'published',
   );
 
-  const services = getLocalizedPostsByType('service')
-    .filter((p) => p.status === 'published')
-    .sort((a, b) => a.title.localeCompare(b.title))
-    .slice(0, resolveHomeSectionLimit(sectionById.services, 'services'));
+  useEffect(() => {
+    let cancelled = false;
 
-  const products = getLocalizedPostsByType('product')
-    .filter((p) => p.status === 'published')
-    .sort((a, b) => a.title.localeCompare(b.title))
-    .slice(0, resolveHomeSectionLimit(sectionById.products, 'products'));
+    void (async () => {
+      const visible = configuredSections.filter((s) => s.visible);
+      await Promise.all(
+        visible.map(async (section) => {
+          const limit = resolveHomeSectionLimit(section, section.id);
+          try {
+            if (section.id === 'courses') {
+              const result = await fetchCoursesPage(0, limit, 'published');
+              if (!cancelled) setFeaturedCourses(result.items);
+              return;
+            }
+            const result = await fetchPostsPage(SECTION_TYPE[section.id], 0, limit, 'published');
+            if (cancelled) return;
+            if (section.id === 'services') setServices(result.items);
+            else if (section.id === 'products') setProducts(result.items);
+            else setLatestPosts(result.items);
+          } catch {
+            if (cancelled) return;
+            if (section.id === 'courses') setFeaturedCourses([]);
+            else if (section.id === 'services') setServices([]);
+            else if (section.id === 'products') setProducts([]);
+            else setLatestPosts([]);
+          }
+        }),
+      );
+    })();
 
-  const latestPosts = getLocalizedPostsByType('post')
-    .filter((p) => p.status === 'published')
-    .sort((a, b) => new Date(b.publishedAt ?? 0).getTime() - new Date(a.publishedAt ?? 0).getTime())
-    .slice(0, resolveHomeSectionLimit(sectionById.blog, 'blog'));
-
-  const featuredCourses = getLocalizedPostsByType('course')
-    .filter((p) => p.status === 'published')
-    .sort((a, b) => b.viewCount - a.viewCount)
-    .slice(0, resolveHomeSectionLimit(sectionById.courses, 'courses'));
+    return () => {
+      cancelled = true;
+    };
+  }, [configuredSections, language, fetchPostsPage, fetchCoursesPage]);
 
   const sectionContent: Record<HomeSectionId, ReactNode> = {
     services:

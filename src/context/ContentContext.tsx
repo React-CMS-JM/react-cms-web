@@ -24,6 +24,7 @@ import {
   mapSiteSettings,
   mapTag,
   mapUiString,
+  type PageResult,
 } from '../services/contentApi';
 import {
   coursesApi,
@@ -96,6 +97,26 @@ interface ContentContextValue {
     lang?: LanguageCode,
   ) => LocalizedPost | undefined;
   getLocalizedPostsByType: (typeSlug: ContentTypeSlug, lang?: LanguageCode) => LocalizedPost[];
+  /** Fetches a page of posts (or pages/services/products) and merges into cache. */
+  fetchPostsPage: (
+    typeSlug: Exclude<ContentTypeSlug, 'course'>,
+    page: number,
+    size: number,
+    status?: string,
+  ) => Promise<PageResult<LocalizedPost>>;
+  /** Fetches a page of courses and merges into cache. */
+  fetchCoursesPage: (
+    page: number,
+    size: number,
+    status?: string,
+  ) => Promise<PageResult<LocalizedPost>>;
+  /** Loads up to 100 items of a type for admin catalogs (no-op if already loaded). */
+  ensureTypeCatalog: (typeSlug: ContentTypeSlug) => Promise<void>;
+  /** Loads a single post/course by slug when missing from cache. */
+  ensurePostBySlug: (
+    slug: string,
+    typeSlug?: ContentTypeSlug,
+  ) => Promise<LocalizedPost | undefined>;
   createPost: (
     input: PostInput,
     translation: Omit<PostI18nInput, 'postId'>,
@@ -200,7 +221,8 @@ interface ContentContextValue {
 
 const ContentContext = createContext<ContentContextValue | null>(null);
 
-const CONTENT_TYPE_SLUGS: ContentTypeSlug[] = ['post', 'page', 'service', 'product'];
+const ADMIN_CATALOG_SIZE = 100;
+const ADMIN_CATALOG_TYPES: ContentTypeSlug[] = ['post', 'service', 'product', 'course'];
 
 function emptyData(): CMSData {
   return {
@@ -292,11 +314,30 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [settings, setSettings] = useState<SiteSettings>(emptyData().settings);
   const [paramUiStringI18n, setParamUiStringI18n] = useState<ParamUiStringI18n[]>([]);
+  const typeCatalogLoadedRef = useRef(new Set<string>());
+  const typeCatalogLoadingRef = useRef(new Map<string, Promise<void>>());
+  const slugLoadingRef = useRef(new Map<string, Promise<LocalizedPost | undefined>>());
 
   const courseTypeId = useMemo(
     () => contentTypes.find((t) => t.slug === 'course')?.id,
     [contentTypes],
   );
+
+  const ingestPosts = useCallback((posts: LocalizedPost[], metadata: PostMetadata[]) => {
+    if (posts.length === 0) return;
+    setLocalizedPosts((prev) => {
+      let next = prev;
+      for (const post of posts) {
+        next = upsertLocalizedPost(next, post);
+      }
+      return next;
+    });
+    const postIds = new Set(posts.map((p) => p.id));
+    setPostMetadata((prev) => [
+      ...prev.filter((m) => !postIds.has(m.postId)),
+      ...metadata,
+    ]);
+  }, []);
 
   const refreshData = useCallback(async () => {
     setLoading(true);
@@ -331,26 +372,51 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       commentsLoadingRef.current = null;
       commentsLoadedByPostRef.current.clear();
       commentsLoadingByPostRef.current.clear();
+      typeCatalogLoadedRef.current.clear();
+      typeCatalogLoadingRef.current.clear();
+      slugLoadingRef.current.clear();
 
-      const postPages = await Promise.all(
-        CONTENT_TYPE_SLUGS.map((type) =>
-          contentApi.listPosts({ type, lang: language, page: 0, size: 100 }),
-        ),
-      );
-      const postDtos = postPages.flatMap((page) => page.items);
-      const contentPosts = postDtos.map(mapLocalizedPost);
-      const contentMetadata = postDtos.flatMap((dto) =>
+      // Pages only at bootstrap (nav + static pages). Other types load on demand.
+      const pagesRes = await contentApi.listPosts({
+        type: 'page',
+        lang: language,
+        page: 0,
+        size: ADMIN_CATALOG_SIZE,
+      });
+      const pagePosts = pagesRes.items.map(mapLocalizedPost);
+      const pageMetadata = pagesRes.items.flatMap((dto) =>
         (dto.metadata ?? []).map(mapMetadata),
       );
 
-      const courseDtos = await coursesApi.listCourses({ lang: language });
-      const courses = courseDtos.map(mapLocalizedCourse);
-      const courseMetadata = courseDtos.flatMap((dto) =>
-        (dto.metadata ?? []).map(mapCourseMetadata),
-      );
+      let catalogPosts: LocalizedPost[] = [];
+      let catalogMetadata: PostMetadata[] = [];
 
-      setLocalizedPosts([...contentPosts, ...courses]);
-      setPostMetadata([...contentMetadata, ...courseMetadata]);
+      if (canOpenAdmin) {
+        const [postPages, coursePage] = await Promise.all([
+          Promise.all(
+            (['post', 'service', 'product'] as const).map((type) =>
+              contentApi.listPosts({ type, lang: language, page: 0, size: ADMIN_CATALOG_SIZE }),
+            ),
+          ),
+          coursesApi.listCourses({ lang: language, page: 0, size: ADMIN_CATALOG_SIZE }),
+        ]);
+        const postDtos = postPages.flatMap((page) => page.items);
+        catalogPosts = [
+          ...postDtos.map(mapLocalizedPost),
+          ...coursePage.items.map(mapLocalizedCourse),
+        ];
+        catalogMetadata = [
+          ...postDtos.flatMap((dto) => (dto.metadata ?? []).map(mapMetadata)),
+          ...coursePage.items.flatMap((dto) => (dto.metadata ?? []).map(mapCourseMetadata)),
+        ];
+        for (const type of ADMIN_CATALOG_TYPES) {
+          typeCatalogLoadedRef.current.add(`${type}:${language}`);
+        }
+      }
+
+      typeCatalogLoadedRef.current.add(`page:${language}`);
+      setLocalizedPosts([...pagePosts, ...catalogPosts]);
+      setPostMetadata([...pageMetadata, ...catalogMetadata]);
       setLocalizedLessons([]);
       lessonsLoadedRef.current.clear();
       lessonsLoadingRef.current.clear();
@@ -510,6 +576,118 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       return localizedPosts.filter((p) => p.contentTypeId === type.id);
     },
     [localizedPosts, contentTypes],
+  );
+
+  const fetchPostsPage = useCallback(
+    async (
+      typeSlug: Exclude<ContentTypeSlug, 'course'>,
+      page: number,
+      size: number,
+      status?: string,
+    ): Promise<PageResult<LocalizedPost>> => {
+      const result = await contentApi.listPosts({
+        type: typeSlug,
+        lang: language,
+        page,
+        size,
+        status,
+      });
+      const items = result.items.map(mapLocalizedPost);
+      const metadata = result.items.flatMap((dto) => (dto.metadata ?? []).map(mapMetadata));
+      ingestPosts(items, metadata);
+      return { items, page: result.page, size: result.size, total: result.total };
+    },
+    [language, ingestPosts],
+  );
+
+  const fetchCoursesPage = useCallback(
+    async (
+      page: number,
+      size: number,
+      status?: string,
+    ): Promise<PageResult<LocalizedPost>> => {
+      const result = await coursesApi.listCourses({
+        lang: language,
+        page,
+        size,
+        status,
+      });
+      const items = result.items.map(mapLocalizedCourse);
+      const metadata = result.items.flatMap((dto) =>
+        (dto.metadata ?? []).map(mapCourseMetadata),
+      );
+      ingestPosts(items, metadata);
+      return { items, page: result.page, size: result.size, total: result.total };
+    },
+    [language, ingestPosts],
+  );
+
+  const ensureTypeCatalog = useCallback(
+    async (typeSlug: ContentTypeSlug) => {
+      const key = `${typeSlug}:${language}`;
+      if (typeCatalogLoadedRef.current.has(key)) return;
+      const inflight = typeCatalogLoadingRef.current.get(key);
+      if (inflight) {
+        await inflight;
+        return;
+      }
+
+      const load = (async () => {
+        try {
+          if (typeSlug === 'course') {
+            await fetchCoursesPage(0, ADMIN_CATALOG_SIZE);
+          } else {
+            await fetchPostsPage(typeSlug, 0, ADMIN_CATALOG_SIZE);
+          }
+          typeCatalogLoadedRef.current.add(key);
+        } catch {
+          // Leave unloaded so a later navigation can retry.
+        } finally {
+          typeCatalogLoadingRef.current.delete(key);
+        }
+      })();
+
+      typeCatalogLoadingRef.current.set(key, load);
+      await load;
+    },
+    [language, fetchPostsPage, fetchCoursesPage],
+  );
+
+  const ensurePostBySlug = useCallback(
+    async (slug: string, typeSlug?: ContentTypeSlug): Promise<LocalizedPost | undefined> => {
+      if (!slug) return undefined;
+      const existing = getLocalizedPostBySlug(slug, typeSlug);
+      if (existing) return existing;
+
+      const key = `${typeSlug ?? 'any'}:${slug}:${language}`;
+      const inflight = slugLoadingRef.current.get(key);
+      if (inflight) return inflight;
+
+      const load = (async () => {
+        try {
+          if (typeSlug === 'course') {
+            const dto = await coursesApi.getCourseBySlug(slug, language);
+            const mapped = mapLocalizedCourse(dto);
+            const metadata = (dto.metadata ?? []).map(mapCourseMetadata);
+            ingestPosts([mapped], metadata);
+            return mapped;
+          }
+          const dto = await contentApi.getPostBySlug(slug, typeSlug, language);
+          const mapped = mapLocalizedPost(dto);
+          const metadata = (dto.metadata ?? []).map(mapMetadata);
+          ingestPosts([mapped], metadata);
+          return mapped;
+        } catch {
+          return undefined;
+        } finally {
+          slugLoadingRef.current.delete(key);
+        }
+      })();
+
+      slugLoadingRef.current.set(key, load);
+      return load;
+    },
+    [getLocalizedPostBySlug, language, ingestPosts],
   );
 
   const createPost = useCallback(
@@ -1140,6 +1318,10 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       getLocalizedPost,
       getLocalizedPostBySlug,
       getLocalizedPostsByType,
+      fetchPostsPage,
+      fetchCoursesPage,
+      ensureTypeCatalog,
+      ensurePostBySlug,
       createPost,
       updatePost,
       deletePost,
@@ -1198,6 +1380,10 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       getLocalizedPost,
       getLocalizedPostBySlug,
       getLocalizedPostsByType,
+      fetchPostsPage,
+      fetchCoursesPage,
+      ensureTypeCatalog,
+      ensurePostBySlug,
       createPost,
       updatePost,
       deletePost,
