@@ -213,6 +213,9 @@ export function Settings() {
             onChange={(e) => setPostsPerPage(Number(e.target.value))}
             required
           />
+          <p className="text-muted settings-hint">
+            Items per page on public listing pages: Blog, Services, Products, and Courses (1–50).
+          </p>
         </section>
 
         <section className="card">

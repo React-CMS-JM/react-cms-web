@@ -82,6 +82,14 @@ export function resolveHomeSectionLimit(
   return Math.floor(raw);
 }
 
+/** Page size for public listing pages (/blog, /services, /products, /courses). */
+export function resolvePostsPerPage(value: number | undefined): number {
+  const raw = value ?? DEFAULT_SETTINGS.postsPerPage;
+  if (!Number.isFinite(raw) || raw < 1) return 1;
+  if (raw > 50) return 50;
+  return Math.floor(raw);
+}
+
 export const DEFAULT_MAIN_MENU: VisibilityOrderItem<MainMenuItemId>[] = [
   { id: 'home', visible: true },
   { id: 'services', visible: true },

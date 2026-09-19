@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useContent } from '../context/ContentContext';
 import type { ContentTypeSlug, LocalizedPost } from '../types/content';
-
-export const LISTING_PAGE_SIZE = 12;
+import { resolvePostsPerPage } from '../types/settings';
 
 type ListingType = Exclude<ContentTypeSlug, 'page'>;
 
 export function usePagedListing(type: ListingType) {
-  const { fetchPostsPage, fetchCoursesPage, language } = useContent();
+  const { fetchPostsPage, fetchCoursesPage, language, settings } = useContent();
+  const pageSize = resolvePostsPerPage(settings.postsPerPage);
   const [page, setPage] = useState(0);
+  const [prevPageSize, setPrevPageSize] = useState(pageSize);
   const [items, setItems] = useState<LocalizedPost[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  if (prevPageSize !== pageSize) {
+    setPrevPageSize(pageSize);
+    setPage(0);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -21,8 +27,8 @@ export function usePagedListing(type: ListingType) {
       try {
         const result =
           type === 'course'
-            ? await fetchCoursesPage(page, LISTING_PAGE_SIZE, 'published')
-            : await fetchPostsPage(type, page, LISTING_PAGE_SIZE, 'published');
+            ? await fetchCoursesPage(page, pageSize, 'published')
+            : await fetchPostsPage(type, page, pageSize, 'published');
         if (cancelled) return;
         setItems(result.items);
         setTotal(result.total);
@@ -38,9 +44,9 @@ export function usePagedListing(type: ListingType) {
     return () => {
       cancelled = true;
     };
-  }, [type, page, language, fetchPostsPage, fetchCoursesPage]);
+  }, [type, page, pageSize, language, fetchPostsPage, fetchCoursesPage]);
 
-  const totalPages = Math.max(1, Math.ceil(total / LISTING_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return {
     items,
@@ -49,6 +55,6 @@ export function usePagedListing(type: ListingType) {
     total,
     totalPages,
     loading,
-    size: LISTING_PAGE_SIZE,
+    size: pageSize,
   };
 }
