@@ -1,17 +1,14 @@
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
+import { ListingPagination } from '../../components/public/ListingPagination';
 import { AccessBadge } from '../../components/ui/Badge';
-import { useContent } from '../../context/ContentContext';
+import { usePagedListing } from '../../hooks/usePagedListing';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function CoursesList() {
-  const { getLocalizedPostsByType, getLocalizedLessonsByCourse } = useContent();
+  const { items: courses, page, setPage, totalPages, loading } = usePagedListing('course');
   const t = useUiString();
-
-  const courses = getLocalizedPostsByType('course')
-    .filter((c) => c.status === 'published')
-    .sort((a, b) => b.viewCount - a.viewCount);
 
   return (
     <PublicLayout>
@@ -21,26 +18,31 @@ export function CoursesList() {
           <p className="page-subtitle">{t(UI_STRING_KEYS.listing_courses_subtitle)}</p>
         </div>
 
-        {courses.length === 0 ? (
+        {loading ? (
+          <p className="empty-state">Loading…</p>
+        ) : courses.length === 0 ? (
           <p className="empty-state">{t(UI_STRING_KEYS.listing_empty)}</p>
         ) : (
-          <div className="posts-grid">
-            {courses.map((course) => (
-              <article key={course.id} className="post-card course-card">
-                <div className="post-card-top">
-                  <h3>
-                    <Link to={`/courses/${course.slug}`}>{course.title}</Link>
-                  </h3>
-                  <AccessBadge level={course.accessLevel} />
-                </div>
-                <p className="post-excerpt">{course.excerpt}</p>
-                <div className="post-meta">
-                  <span>{getLocalizedLessonsByCourse(course.id).length} lessons</span>
-                  <span>{course.viewCount.toLocaleString()} enrolled</span>
-                </div>
-              </article>
-            ))}
-          </div>
+          <>
+            <div className="posts-grid">
+              {courses.map((course) => (
+                <article key={course.id} className="post-card course-card">
+                  <div className="post-card-top">
+                    <h3>
+                      <Link to={`/courses/${course.slug}`}>{course.title}</Link>
+                    </h3>
+                    <AccessBadge level={course.accessLevel} />
+                  </div>
+                  <p className="post-excerpt">{course.excerpt}</p>
+                  <div className="post-meta">
+                    <span>{course.lessonCount ?? 0} lessons</span>
+                    <span>{course.viewCount.toLocaleString()} enrolled</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <ListingPagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          </>
         )}
       </section>
     </PublicLayout>

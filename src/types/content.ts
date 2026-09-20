@@ -64,6 +64,8 @@ export type LocalizedPost = Post & {
   excerpt: string;
   metaTitle: string;
   metaDescription: string;
+  /** Present for courses — count from list API (avoids N+1 lesson fetches). */
+  lessonCount?: number;
 };
 
 export type PostInput = Omit<Post, 'id' | 'viewCount' | 'createdAt' | 'updatedAt' | 'publishedAt'>;

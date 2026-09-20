@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { useContent } from '../../context/ContentContext';
@@ -7,10 +7,26 @@ import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function ServiceView() {
   const { slug } = useParams<{ slug: string }>();
-  const { getLocalizedPostBySlug, incrementViewCount } = useContent();
+  const { getLocalizedPostBySlug, ensurePostBySlug, incrementViewCount } = useContent();
   const t = useUiString();
   const service = slug ? getLocalizedPostBySlug(slug, 'service') : undefined;
   const counted = useRef(false);
+  const [resolving, setResolving] = useState(!!slug && !service);
+
+  useEffect(() => {
+    if (!slug || service) {
+      setResolving(false);
+      return;
+    }
+    let cancelled = false;
+    setResolving(true);
+    void ensurePostBySlug(slug, 'service').finally(() => {
+      if (!cancelled) setResolving(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, service, ensurePostBySlug]);
 
   useEffect(() => {
     if (service && service.status === 'published' && !counted.current) {
@@ -18,6 +34,14 @@ export function ServiceView() {
       incrementViewCount(service.id);
     }
   }, [service, incrementViewCount]);
+
+  if (resolving) {
+    return (
+      <PublicLayout>
+        <p className="empty-state">Loading…</p>
+      </PublicLayout>
+    );
+  }
 
   if (!service || service.status !== 'published') {
     return (

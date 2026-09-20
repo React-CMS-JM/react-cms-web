@@ -10,6 +10,7 @@ import { Textarea } from '../../components/ui/Textarea';
 import { Modal } from '../../components/ui/Modal';
 import { resolveUiString } from '../../lib/paramUi';
 import {
+  DEFAULT_HOME_SECTION_LIMITS,
   DEFAULT_HOME_SECTIONS,
   DEFAULT_MAIN_MENU,
   HOME_SECTION_LABELS,
@@ -32,9 +33,16 @@ function ensureOrder<T extends string>(
 ): VisibilityOrderItem<T>[] {
   if (!items?.length) return defaults.map((d) => ({ ...d }));
   const byId = new Map(items.map((item) => [item.id, item]));
-  const ordered = items
+  const ordered: VisibilityOrderItem<T>[] = items
     .filter((item) => defaults.some((d) => d.id === item.id))
-    .map((item) => ({ ...item }));
+    .map((item) => {
+      const fallback = defaults.find((d) => d.id === item.id);
+      return {
+        id: item.id,
+        visible: item.visible,
+        itemLimit: item.itemLimit ?? fallback?.itemLimit,
+      };
+    });
   for (const fallback of defaults) {
     if (!byId.has(fallback.id)) ordered.push({ ...fallback });
   }
@@ -205,6 +213,9 @@ export function Settings() {
             onChange={(e) => setPostsPerPage(Number(e.target.value))}
             required
           />
+          <p className="text-muted settings-hint">
+            Items per page on public listing pages: Blog, Services, Products, and Courses (1–50).
+          </p>
         </section>
 
         <section className="card">
@@ -265,13 +276,15 @@ export function Settings() {
         <section className="card">
           <h2 className="card-title">Home Sections</h2>
           <p className="text-muted settings-hint">
-            Show, hide, and reorder the listing blocks on the homepage. Empty sections stay hidden
-            even when enabled.
+            Show, hide, and reorder the listing blocks on the homepage. Set how many items each
+            section shows (1–50). Empty sections stay hidden even when enabled.
           </p>
           <OrderedVisibilityList
             items={homeSections}
             labels={HOME_SECTION_LABELS}
             onChange={setHomeSections}
+            showItemLimit
+            defaultItemLimits={DEFAULT_HOME_SECTION_LIMITS}
           />
         </section>
 

@@ -594,6 +594,21 @@ img.site-icon-preview-mark {
   background: var(--color-bg-alt);
 }
 .ordered-visibility-check { margin: 0; flex: 1; }
+.ordered-visibility-limit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.ordered-visibility-limit input {
+  width: 4.25rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: inherit;
+}
 .ordered-visibility-actions { display: flex; gap: 2px; }
 .ordered-visibility-actions .btn { padding: 4px 6px; }
 
@@ -711,6 +726,18 @@ img.public-brand-logo {
 .posts-section { margin-bottom: 56px; }
 .posts-section h2 { font-size: 1.5rem; font-weight: 700; }
 .posts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+.listing-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 28px;
+  flex-wrap: wrap;
+}
+.listing-pagination-status {
+  font-size: .875rem;
+  color: var(--color-text-muted);
+}
 .post-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);

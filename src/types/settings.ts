@@ -22,6 +22,8 @@ export type MainMenuItemId =
 export interface VisibilityOrderItem<T extends string = string> {
   id: T;
   visible: boolean;
+  /** Homepage sections only — max cards shown for that block. */
+  itemLimit?: number;
 }
 
 /** Dynamic homepage hero CTA button. */
@@ -57,11 +59,36 @@ export interface SiteSettings {
 }
 
 export const DEFAULT_HOME_SECTIONS: VisibilityOrderItem<HomeSectionId>[] = [
-  { id: 'services', visible: true },
-  { id: 'products', visible: true },
-  { id: 'blog', visible: true },
-  { id: 'courses', visible: true },
+  { id: 'services', visible: true, itemLimit: 5 },
+  { id: 'products', visible: true, itemLimit: 6 },
+  { id: 'blog', visible: true, itemLimit: 9 },
+  { id: 'courses', visible: true, itemLimit: 3 },
 ];
+
+export const DEFAULT_HOME_SECTION_LIMITS: Record<HomeSectionId, number> = {
+  services: 5,
+  products: 6,
+  blog: 9,
+  courses: 3,
+};
+
+export function resolveHomeSectionLimit(
+  section: VisibilityOrderItem<HomeSectionId> | undefined,
+  sectionId: HomeSectionId,
+): number {
+  const raw = section?.itemLimit ?? DEFAULT_HOME_SECTION_LIMITS[sectionId];
+  if (!Number.isFinite(raw) || raw < 1) return 1;
+  if (raw > 50) return 50;
+  return Math.floor(raw);
+}
+
+/** Page size for public listing pages (/blog, /services, /products, /courses). */
+export function resolvePostsPerPage(value: number | undefined): number {
+  const raw = value ?? DEFAULT_SETTINGS.postsPerPage;
+  if (!Number.isFinite(raw) || raw < 1) return 1;
+  if (raw > 50) return 50;
+  return Math.floor(raw);
+}
 
 export const DEFAULT_MAIN_MENU: VisibilityOrderItem<MainMenuItemId>[] = [
   { id: 'home', visible: true },

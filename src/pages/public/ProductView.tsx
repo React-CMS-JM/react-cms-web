@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { useContent } from '../../context/ContentContext';
@@ -7,10 +7,27 @@ import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function ProductView() {
   const { slug } = useParams<{ slug: string }>();
-  const { getLocalizedPostBySlug, incrementViewCount, getMetadataForPost } = useContent();
+  const { getLocalizedPostBySlug, ensurePostBySlug, incrementViewCount, getMetadataForPost } =
+    useContent();
   const t = useUiString();
   const product = slug ? getLocalizedPostBySlug(slug, 'product') : undefined;
   const counted = useRef(false);
+  const [resolving, setResolving] = useState(!!slug && !product);
+
+  useEffect(() => {
+    if (!slug || product) {
+      setResolving(false);
+      return;
+    }
+    let cancelled = false;
+    setResolving(true);
+    void ensurePostBySlug(slug, 'product').finally(() => {
+      if (!cancelled) setResolving(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, product, ensurePostBySlug]);
 
   useEffect(() => {
     if (product && product.status === 'published' && !counted.current) {
@@ -18,6 +35,14 @@ export function ProductView() {
       incrementViewCount(product.id);
     }
   }, [product, incrementViewCount]);
+
+  if (resolving) {
+    return (
+      <PublicLayout>
+        <p className="empty-state">Loading…</p>
+      </PublicLayout>
+    );
+  }
 
   if (!product || product.status !== 'published') {
     return (

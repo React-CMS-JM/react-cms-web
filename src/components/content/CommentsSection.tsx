@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useContent } from '../../context/ContentContext';
 import { useLocale } from '../../context/LocaleContext';
@@ -11,14 +11,26 @@ import { Link } from 'react-router-dom';
 import { contentApi } from '../../services/contentApi';
 
 export function CommentsSection({ postId }: { postId: string }) {
-  const { getCommentsByPost, createComment, getUser } = useContent();
+  const { getCommentsByPost, ensureCommentsForPost, createComment, getUser } = useContent();
   const { currentUser, can, isGuest } = useAuth();
   const { language } = useLocale();
   const [content, setContent] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [ready, setReady] = useState(false);
   const [translationByComment, setTranslationByComment] = useState<Record<string, string>>({});
   const [loadingTranslationId, setLoadingTranslationId] = useState<string | null>(null);
   const [translationErrorByComment, setTranslationErrorByComment] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    void ensureCommentsForPost(postId).then(() => {
+      if (!cancelled) setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [postId, ensureCommentsForPost]);
 
   const comments = getCommentsByPost(postId).filter((c) => c.status === 'approved');
   const topLevel = comments.filter((c) => !c.parentCommentId);
@@ -131,10 +143,14 @@ export function CommentsSection({ postId }: { postId: string }) {
 
   return (
     <section className="comments-section">
-      <h2>Comments ({topLevel.length})</h2>
+      <h2>Comments ({ready ? topLevel.length : '…'})</h2>
 
-      {topLevel.length === 0 && <p className="empty-state">No comments yet. Be the first to share your thoughts.</p>}
-      <div className="comments-list">{topLevel.map((c) => renderComment(c))}</div>
+      {!ready ? (
+        <p className="empty-state">Loading comments…</p>
+      ) : topLevel.length === 0 ? (
+        <p className="empty-state">No comments yet. Be the first to share your thoughts.</p>
+      ) : null}
+      {ready && <div className="comments-list">{topLevel.map((c) => renderComment(c))}</div>}
 
       {can('comment:write') ? (
         <form className="comment-form" onSubmit={handleSubmit}>

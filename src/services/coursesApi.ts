@@ -10,11 +10,14 @@ import type {
 import {
   mapLocalizedPost,
   type LocalizedPostDto,
+  type PageResult,
   type PostMetadataDto,
 } from './contentApi';
 import { apiRequest, withQuery } from './httpClient';
 
-export interface LocalizedCourseDto extends LocalizedPostDto {}
+export interface LocalizedCourseDto extends LocalizedPostDto {
+  lessonCount?: number;
+}
 
 export interface LocalizedLessonDto {
   id: string;
@@ -83,7 +86,10 @@ export interface UpdateLessonBody {
 const base = () => apiEnv.coursesBaseUrl;
 
 export function mapLocalizedCourse(dto: LocalizedCourseDto): LocalizedPost {
-  return mapLocalizedPost(dto);
+  return {
+    ...mapLocalizedPost(dto),
+    lessonCount: dto.lessonCount ?? 0,
+  };
 }
 
 export function mapLocalizedLesson(dto: LocalizedLessonDto): LocalizedCourseLesson {
@@ -112,10 +118,12 @@ export function mapCourseMetadata(dto: PostMetadataDto): PostMetadata {
 }
 
 export const coursesApi = {
-  listCourses(params?: { status?: string; lang?: string }) {
-    return apiRequest<LocalizedCourseDto[]>(base(), withQuery('/api/courses', params), {
-      auth: false,
-    });
+  listCourses(params?: { status?: string; lang?: string; page?: number; size?: number }) {
+    return apiRequest<PageResult<LocalizedCourseDto>>(
+      base(),
+      withQuery('/api/courses', params),
+      { auth: false },
+    );
   },
 
   getCourse(id: string, lang?: string) {

@@ -1,9 +1,6 @@
 import { ContentList } from '../../components/admin/ContentList';
-import { useContent } from '../../context/ContentContext';
 
 export function CoursesList() {
-  const { getLocalizedLessonsByCourse } = useContent();
-
   return (
     <ContentList
       typeSlug="course"
@@ -13,7 +10,7 @@ export function CoursesList() {
       publicBasePath="/courses"
       newLabel="New Course"
       extraColumnHeader="Lessons"
-      extraColumn={(course) => getLocalizedLessonsByCourse(course.id).length}
+      extraColumn={(course) => course.lessonCount ?? 0}
     />
   );
 }

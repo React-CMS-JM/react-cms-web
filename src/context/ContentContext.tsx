@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -23,6 +24,7 @@ import {
   mapSiteSettings,
   mapTag,
   mapUiString,
+  type PageResult,
 } from '../services/contentApi';
 import {
   coursesApi,
@@ -57,9 +59,21 @@ import type {
 } from '../types/taxonomy';
 import type { User, UserInput } from '../types/user';
 import type { ParamUiStringI18n } from '../types/paramUi';
-import type { Permission, Role } from '../types/rbac';
+import type { Permission, PermissionName, Role } from '../types/rbac';
 import { useAuth } from './AuthContext';
 import { useLocale } from './LocaleContext';
+
+/** Staff permissions that unlock the admin shell (matches PublicLayout). */
+const ADMIN_ACCESS_PERMISSIONS: PermissionName[] = [
+  'content:create',
+  'content:edit_own',
+  'content:edit_all',
+  'content:publish',
+  'comment:moderate',
+  'user:ban',
+];
+
+const ADMIN_UI_COMPONENT = 'AdminSidebar';
 
 interface ContentContextValue {
   data: CMSData;
@@ -83,6 +97,26 @@ interface ContentContextValue {
     lang?: LanguageCode,
   ) => LocalizedPost | undefined;
   getLocalizedPostsByType: (typeSlug: ContentTypeSlug, lang?: LanguageCode) => LocalizedPost[];
+  /** Fetches a page of posts (or pages/services/products) and merges into cache. */
+  fetchPostsPage: (
+    typeSlug: Exclude<ContentTypeSlug, 'course'>,
+    page: number,
+    size: number,
+    status?: string,
+  ) => Promise<PageResult<LocalizedPost>>;
+  /** Fetches a page of courses and merges into cache. */
+  fetchCoursesPage: (
+    page: number,
+    size: number,
+    status?: string,
+  ) => Promise<PageResult<LocalizedPost>>;
+  /** Loads up to 100 items of a type for admin catalogs (no-op if already loaded). */
+  ensureTypeCatalog: (typeSlug: ContentTypeSlug) => Promise<void>;
+  /** Loads a single post/course by slug when missing from cache. */
+  ensurePostBySlug: (
+    slug: string,
+    typeSlug?: ContentTypeSlug,
+  ) => Promise<LocalizedPost | undefined>;
   createPost: (
     input: PostInput,
     translation: Omit<PostI18nInput, 'postId'>,
@@ -107,6 +141,8 @@ interface ContentContextValue {
 
   courseLessons: CourseLesson[];
   getLocalizedLessonsByCourse: (courseId: string, lang?: LanguageCode) => LocalizedCourseLesson[];
+  /** Loads lessons for a course once (no-op if already loaded). Use on course/lesson pages. */
+  ensureLessonsLoaded: (courseId: string) => Promise<void>;
   getLocalizedLesson: (id: string, lang?: LanguageCode) => LocalizedCourseLesson | undefined;
   getLocalizedLessonBySlug: (
     courseId: string,
@@ -150,6 +186,10 @@ interface ContentContextValue {
 
   comments: Comment[];
   getCommentsByPost: (postId: string) => Comment[];
+  /** Loads all comments once (admin moderation / dashboard). */
+  ensureCommentsLoaded: () => Promise<void>;
+  /** Loads comments for one post (public CommentsSection). */
+  ensureCommentsForPost: (postId: string) => Promise<void>;
   createComment: (input: CommentInput) => Promise<Comment>;
   setCommentStatus: (id: string, status: CommentStatus) => Promise<void>;
   deleteComment: (id: string) => Promise<void>;
@@ -181,7 +221,8 @@ interface ContentContextValue {
 
 const ContentContext = createContext<ContentContextValue | null>(null);
 
-const CONTENT_TYPE_SLUGS: ContentTypeSlug[] = ['post', 'page', 'service', 'product'];
+const ADMIN_CATALOG_SIZE = 100;
+const ADMIN_CATALOG_TYPES: ContentTypeSlug[] = ['post', 'service', 'product', 'course'];
 
 function emptyData(): CMSData {
   return {
@@ -249,16 +290,23 @@ function upsertLocalizedPost(list: LocalizedPost[], next: LocalizedPost): Locali
 
 export function ContentProvider({ children }: { children: ReactNode }) {
   const { language } = useLocale();
-  const { token } = useAuth();
+  const { token, canAny } = useAuth();
+  const canOpenAdmin = canAny(ADMIN_ACCESS_PERMISSIONS);
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
   const isInitialLoading = loading && !hasLoaded;
   const [error, setError] = useState<string | null>(null);
   const [localizedPosts, setLocalizedPosts] = useState<LocalizedPost[]>([]);
   const [localizedLessons, setLocalizedLessons] = useState<LocalizedCourseLesson[]>([]);
+  const lessonsLoadedRef = useRef(new Set<string>());
+  const lessonsLoadingRef = useRef(new Map<string, Promise<void>>());
   const [localizedCategories, setLocalizedCategories] = useState<LocalizedCategory[]>([]);
   const [localizedTags, setLocalizedTags] = useState<LocalizedTag[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
+  const commentsFullyLoadedRef = useRef(false);
+  const commentsLoadingRef = useRef<Promise<void> | null>(null);
+  const commentsLoadedByPostRef = useRef(new Set<string>());
+  const commentsLoadingByPostRef = useRef(new Map<string, Promise<void>>());
   const [postMetadata, setPostMetadata] = useState<PostMetadata[]>([]);
   const [contentTypes, setContentTypes] = useState<CMSData['contentTypes']>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -266,54 +314,112 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [settings, setSettings] = useState<SiteSettings>(emptyData().settings);
   const [paramUiStringI18n, setParamUiStringI18n] = useState<ParamUiStringI18n[]>([]);
+  const typeCatalogLoadedRef = useRef(new Set<string>());
+  const typeCatalogLoadingRef = useRef(new Map<string, Promise<void>>());
+  const slugLoadingRef = useRef(new Map<string, Promise<LocalizedPost | undefined>>());
 
   const courseTypeId = useMemo(
     () => contentTypes.find((t) => t.slug === 'course')?.id,
     [contentTypes],
   );
 
+  const ingestPosts = useCallback((posts: LocalizedPost[], metadata: PostMetadata[]) => {
+    if (posts.length === 0) return;
+    setLocalizedPosts((prev) => {
+      let next = prev;
+      for (const post of posts) {
+        next = upsertLocalizedPost(next, post);
+      }
+      return next;
+    });
+    const postIds = new Set(posts.map((p) => p.id));
+    setPostMetadata((prev) => [
+      ...prev.filter((m) => !postIds.has(m.postId)),
+      ...metadata,
+    ]);
+  }, []);
+
   const refreshData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [types, settingsRes, uiStrings, categoriesRes, tagsRes, commentsRes] =
+      const [types, settingsRes, rawPublicUiStrings, categoriesRes, tagsRes, adminUiStrings] =
         await Promise.all([
           contentApi.listContentTypes(),
           contentApi.getSettings(language),
+          // Default list excludes AdminSidebar on the content service (also filtered client-side).
           contentApi.listUiStrings({ lang: language }),
           contentApi.listCategories(language),
           contentApi.listTags(language),
-          contentApi.listComments(),
+          canOpenAdmin
+            ? contentApi.listUiStrings({ lang: language, component: ADMIN_UI_COMPONENT }).catch(() => [])
+            : Promise.resolve([]),
         ]);
+
+      const publicUiStrings = rawPublicUiStrings.filter(
+        (row) => row.uiComponent !== ADMIN_UI_COMPONENT,
+      );
+      const uiStringDtos = [...publicUiStrings, ...adminUiStrings];
 
       const mappedTypes = types.map(mapContentType);
       setContentTypes(mappedTypes);
       setSettings(mapSiteSettings(settingsRes));
-      setParamUiStringI18n(uiStrings.map(mapUiString));
+      setParamUiStringI18n(uiStringDtos.map(mapUiString));
       setLocalizedCategories(categoriesRes.map(mapCategory));
       setLocalizedTags(tagsRes.map(mapTag));
-      setComments(commentsRes.map(mapComment));
+      setComments([]);
+      commentsFullyLoadedRef.current = false;
+      commentsLoadingRef.current = null;
+      commentsLoadedByPostRef.current.clear();
+      commentsLoadingByPostRef.current.clear();
+      typeCatalogLoadedRef.current.clear();
+      typeCatalogLoadingRef.current.clear();
+      slugLoadingRef.current.clear();
 
-      const postPages = await Promise.all(
-        CONTENT_TYPE_SLUGS.map((type) =>
-          contentApi.listPosts({ type, lang: language, page: 0, size: 100 }),
-        ),
-      );
-      const postDtos = postPages.flatMap((page) => page.items);
-      const contentPosts = postDtos.map(mapLocalizedPost);
-      const contentMetadata = postDtos.flatMap((dto) =>
+      // Pages only at bootstrap (nav + static pages). Other types load on demand.
+      const pagesRes = await contentApi.listPosts({
+        type: 'page',
+        lang: language,
+        page: 0,
+        size: ADMIN_CATALOG_SIZE,
+      });
+      const pagePosts = pagesRes.items.map(mapLocalizedPost);
+      const pageMetadata = pagesRes.items.flatMap((dto) =>
         (dto.metadata ?? []).map(mapMetadata),
       );
 
-      const courseDtos = await coursesApi.listCourses({ lang: language });
-      const courses = courseDtos.map(mapLocalizedCourse);
-      const courseMetadata = courseDtos.flatMap((dto) =>
-        (dto.metadata ?? []).map(mapCourseMetadata),
-      );
+      let catalogPosts: LocalizedPost[] = [];
+      let catalogMetadata: PostMetadata[] = [];
 
-      setLocalizedPosts([...contentPosts, ...courses]);
-      setPostMetadata([...contentMetadata, ...courseMetadata]);
+      if (canOpenAdmin) {
+        const [postPages, coursePage] = await Promise.all([
+          Promise.all(
+            (['post', 'service', 'product'] as const).map((type) =>
+              contentApi.listPosts({ type, lang: language, page: 0, size: ADMIN_CATALOG_SIZE }),
+            ),
+          ),
+          coursesApi.listCourses({ lang: language, page: 0, size: ADMIN_CATALOG_SIZE }),
+        ]);
+        const postDtos = postPages.flatMap((page) => page.items);
+        catalogPosts = [
+          ...postDtos.map(mapLocalizedPost),
+          ...coursePage.items.map(mapLocalizedCourse),
+        ];
+        catalogMetadata = [
+          ...postDtos.flatMap((dto) => (dto.metadata ?? []).map(mapMetadata)),
+          ...coursePage.items.flatMap((dto) => (dto.metadata ?? []).map(mapCourseMetadata)),
+        ];
+        for (const type of ADMIN_CATALOG_TYPES) {
+          typeCatalogLoadedRef.current.add(`${type}:${language}`);
+        }
+      }
+
+      typeCatalogLoadedRef.current.add(`page:${language}`);
+      setLocalizedPosts([...pagePosts, ...catalogPosts]);
+      setPostMetadata([...pageMetadata, ...catalogMetadata]);
       setLocalizedLessons([]);
+      lessonsLoadedRef.current.clear();
+      lessonsLoadingRef.current.clear();
 
       if (token) {
         try {
@@ -335,28 +441,13 @@ export function ContentProvider({ children }: { children: ReactNode }) {
         setRoles([]);
         setPermissions([]);
       }
-
-      // Lessons are only needed on course pages/admin — load after first paint.
-      void (async () => {
-        const lessonGroups = await Promise.all(
-          courses.map(async (course) => {
-            try {
-              const lessons = await coursesApi.listLessons(course.id, language);
-              return lessons.map(mapLocalizedLesson);
-            } catch {
-              return [] as LocalizedCourseLesson[];
-            }
-          }),
-        );
-        setLocalizedLessons(lessonGroups.flat());
-      })();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load content from API');
     } finally {
       setHasLoaded(true);
       setLoading(false);
     }
-  }, [language, token]);
+  }, [language, token, canOpenAdmin]);
 
   useEffect(() => {
     void refreshData();
@@ -485,6 +576,118 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       return localizedPosts.filter((p) => p.contentTypeId === type.id);
     },
     [localizedPosts, contentTypes],
+  );
+
+  const fetchPostsPage = useCallback(
+    async (
+      typeSlug: Exclude<ContentTypeSlug, 'course'>,
+      page: number,
+      size: number,
+      status?: string,
+    ): Promise<PageResult<LocalizedPost>> => {
+      const result = await contentApi.listPosts({
+        type: typeSlug,
+        lang: language,
+        page,
+        size,
+        status,
+      });
+      const items = result.items.map(mapLocalizedPost);
+      const metadata = result.items.flatMap((dto) => (dto.metadata ?? []).map(mapMetadata));
+      ingestPosts(items, metadata);
+      return { items, page: result.page, size: result.size, total: result.total };
+    },
+    [language, ingestPosts],
+  );
+
+  const fetchCoursesPage = useCallback(
+    async (
+      page: number,
+      size: number,
+      status?: string,
+    ): Promise<PageResult<LocalizedPost>> => {
+      const result = await coursesApi.listCourses({
+        lang: language,
+        page,
+        size,
+        status,
+      });
+      const items = result.items.map(mapLocalizedCourse);
+      const metadata = result.items.flatMap((dto) =>
+        (dto.metadata ?? []).map(mapCourseMetadata),
+      );
+      ingestPosts(items, metadata);
+      return { items, page: result.page, size: result.size, total: result.total };
+    },
+    [language, ingestPosts],
+  );
+
+  const ensureTypeCatalog = useCallback(
+    async (typeSlug: ContentTypeSlug) => {
+      const key = `${typeSlug}:${language}`;
+      if (typeCatalogLoadedRef.current.has(key)) return;
+      const inflight = typeCatalogLoadingRef.current.get(key);
+      if (inflight) {
+        await inflight;
+        return;
+      }
+
+      const load = (async () => {
+        try {
+          if (typeSlug === 'course') {
+            await fetchCoursesPage(0, ADMIN_CATALOG_SIZE);
+          } else {
+            await fetchPostsPage(typeSlug, 0, ADMIN_CATALOG_SIZE);
+          }
+          typeCatalogLoadedRef.current.add(key);
+        } catch {
+          // Leave unloaded so a later navigation can retry.
+        } finally {
+          typeCatalogLoadingRef.current.delete(key);
+        }
+      })();
+
+      typeCatalogLoadingRef.current.set(key, load);
+      await load;
+    },
+    [language, fetchPostsPage, fetchCoursesPage],
+  );
+
+  const ensurePostBySlug = useCallback(
+    async (slug: string, typeSlug?: ContentTypeSlug): Promise<LocalizedPost | undefined> => {
+      if (!slug) return undefined;
+      const existing = getLocalizedPostBySlug(slug, typeSlug);
+      if (existing) return existing;
+
+      const key = `${typeSlug ?? 'any'}:${slug}:${language}`;
+      const inflight = slugLoadingRef.current.get(key);
+      if (inflight) return inflight;
+
+      const load = (async () => {
+        try {
+          if (typeSlug === 'course') {
+            const dto = await coursesApi.getCourseBySlug(slug, language);
+            const mapped = mapLocalizedCourse(dto);
+            const metadata = (dto.metadata ?? []).map(mapCourseMetadata);
+            ingestPosts([mapped], metadata);
+            return mapped;
+          }
+          const dto = await contentApi.getPostBySlug(slug, typeSlug, language);
+          const mapped = mapLocalizedPost(dto);
+          const metadata = (dto.metadata ?? []).map(mapMetadata);
+          ingestPosts([mapped], metadata);
+          return mapped;
+        } catch {
+          return undefined;
+        } finally {
+          slugLoadingRef.current.delete(key);
+        }
+      })();
+
+      slugLoadingRef.current.set(key, load);
+      return load;
+    },
+    [getLocalizedPostBySlug, language, ingestPosts],
   );
 
   const createPost = useCallback(
@@ -673,6 +876,39 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     [localizedLessons],
   );
 
+  const ensureLessonsLoaded = useCallback(
+    async (courseId: string) => {
+      if (!courseId || lessonsLoadedRef.current.has(courseId)) return;
+      const inflight = lessonsLoadingRef.current.get(courseId);
+      if (inflight) {
+        await inflight;
+        return;
+      }
+
+      const load = (async () => {
+        try {
+          const lessons = (await coursesApi.listLessons(courseId, language)).map(mapLocalizedLesson);
+          setLocalizedLessons((prev) => [
+            ...prev.filter((l) => l.courseId !== courseId),
+            ...lessons,
+          ]);
+          lessonsLoadedRef.current.add(courseId);
+          setLocalizedPosts((prev) =>
+            prev.map((p) => (p.id === courseId ? { ...p, lessonCount: lessons.length } : p)),
+          );
+        } catch {
+          // Leave unloaded so a later navigation can retry.
+        } finally {
+          lessonsLoadingRef.current.delete(courseId);
+        }
+      })();
+
+      lessonsLoadingRef.current.set(courseId, load);
+      await load;
+    },
+    [language],
+  );
+
   const getLocalizedLesson = useCallback(
     (id: string, _lang?: LanguageCode) => localizedLessons.find((l) => l.id === id),
     [localizedLessons],
@@ -703,6 +939,12 @@ export function ContentProvider({ children }: { children: ReactNode }) {
         }),
       );
       setLocalizedLessons((prev) => [...prev, created]);
+      lessonsLoadedRef.current.add(input.courseId);
+      setLocalizedPosts((prev) =>
+        prev.map((p) =>
+          p.id === input.courseId ? { ...p, lessonCount: (p.lessonCount ?? 0) + 1 } : p,
+        ),
+      );
       return created;
     },
     [],
@@ -752,11 +994,21 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteLesson = useCallback(async (id: string) => {
+    const existing = localizedLessons.find((l) => l.id === id);
     await coursesApi.deleteLessonById(id);
     setLocalizedLessons((prev) =>
       prev.filter((l) => l.id !== id && l.parentLessonId !== id),
     );
-  }, []);
+    if (existing) {
+      setLocalizedPosts((prev) =>
+        prev.map((p) =>
+          p.id === existing.courseId
+            ? { ...p, lessonCount: Math.max(0, (p.lessonCount ?? 1) - 1) }
+            : p,
+        ),
+      );
+    }
+  }, [localizedLessons]);
 
   const getLocalizedCategories = useCallback(
     (_lang?: LanguageCode) => localizedCategories,
@@ -867,6 +1119,56 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     [comments],
   );
 
+  const ensureCommentsLoaded = useCallback(async () => {
+    if (commentsFullyLoadedRef.current) return;
+    if (commentsLoadingRef.current) {
+      await commentsLoadingRef.current;
+      return;
+    }
+
+    const load = (async () => {
+      try {
+        const rows = (await contentApi.listComments()).map(mapComment);
+        setComments(rows);
+        commentsFullyLoadedRef.current = true;
+        commentsLoadedByPostRef.current = new Set(rows.map((c) => c.postId));
+      } catch {
+        // Leave unloaded so a later navigation can retry.
+      } finally {
+        commentsLoadingRef.current = null;
+      }
+    })();
+
+    commentsLoadingRef.current = load;
+    await load;
+  }, []);
+
+  const ensureCommentsForPost = useCallback(async (postId: string) => {
+    if (!postId || commentsFullyLoadedRef.current || commentsLoadedByPostRef.current.has(postId)) {
+      return;
+    }
+    const inflight = commentsLoadingByPostRef.current.get(postId);
+    if (inflight) {
+      await inflight;
+      return;
+    }
+
+    const load = (async () => {
+      try {
+        const rows = (await contentApi.listComments({ postId })).map(mapComment);
+        setComments((prev) => [...prev.filter((c) => c.postId !== postId), ...rows]);
+        commentsLoadedByPostRef.current.add(postId);
+      } catch {
+        // Leave unloaded so a later navigation can retry.
+      } finally {
+        commentsLoadingByPostRef.current.delete(postId);
+      }
+    })();
+
+    commentsLoadingByPostRef.current.set(postId, load);
+    await load;
+  }, []);
+
   const createComment = useCallback(async (input: CommentInput): Promise<Comment> => {
     const created = mapComment(
       await contentApi.createComment({
@@ -879,6 +1181,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       }),
     );
     setComments((prev) => [...prev, created]);
+    commentsLoadedByPostRef.current.add(input.postId);
     return created;
   }, []);
 
@@ -1015,6 +1318,10 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       getLocalizedPost,
       getLocalizedPostBySlug,
       getLocalizedPostsByType,
+      fetchPostsPage,
+      fetchCoursesPage,
+      ensureTypeCatalog,
+      ensurePostBySlug,
       createPost,
       updatePost,
       deletePost,
@@ -1025,6 +1332,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       setMetadataForPost,
       courseLessons: data.courseLessons,
       getLocalizedLessonsByCourse,
+      ensureLessonsLoaded,
       getLocalizedLesson,
       getLocalizedLessonBySlug,
       createLesson,
@@ -1042,6 +1350,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       deleteTag,
       comments,
       getCommentsByPost,
+      ensureCommentsLoaded,
+      ensureCommentsForPost,
       createComment,
       setCommentStatus,
       deleteComment,
@@ -1070,6 +1380,10 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       getLocalizedPost,
       getLocalizedPostBySlug,
       getLocalizedPostsByType,
+      fetchPostsPage,
+      fetchCoursesPage,
+      ensureTypeCatalog,
+      ensurePostBySlug,
       createPost,
       updatePost,
       deletePost,
@@ -1079,6 +1393,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       getMetadataForPost,
       setMetadataForPost,
       getLocalizedLessonsByCourse,
+      ensureLessonsLoaded,
       getLocalizedLesson,
       getLocalizedLessonBySlug,
       createLesson,
@@ -1094,6 +1409,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       deleteTag,
       comments,
       getCommentsByPost,
+      ensureCommentsLoaded,
+      ensureCommentsForPost,
       createComment,
       setCommentStatus,
       deleteComment,
