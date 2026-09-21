@@ -4,19 +4,19 @@ import { RoleBadge } from '../../components/ui/Badge';
 import { IconCheck } from '../../components/ui/Icons';
 
 export function RolesPermissions() {
-  const { roles, permissions, loadAuthDirectory } = useContent();
+  const { roles, permissions, loadRolesAdmin } = useContent();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void loadAuthDirectory().finally(() => {
+    void loadRolesAdmin().finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [loadAuthDirectory]);
+  }, [loadRolesAdmin]);
 
   return (
     <div className="page">

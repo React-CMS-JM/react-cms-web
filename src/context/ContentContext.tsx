@@ -186,11 +186,10 @@ interface ContentContextValue {
 
   users: User[];
   getUser: (id: string) => User | undefined;
-  /**
-   * Loads users, roles, and permissions for the Users / Roles admin pages only.
-   * Not used for author labels (those use /users/by-ids or dashboard enrichment).
-   */
-  loadAuthDirectory: () => Promise<void>;
+  /** Loads users + roles for the Users admin page (role assignment UI). */
+  loadUsersAdmin: () => Promise<void>;
+  /** Loads roles + permissions for the Roles & Permissions admin page. */
+  loadRolesAdmin: () => Promise<void>;
   createUser: (input: UserInput & { password?: string }) => Promise<User>;
   updateUser: (id: string, input: Partial<UserInput & { password?: string }>) => Promise<User | undefined>;
   banUser: (id: string, reason: string) => Promise<void>;
@@ -305,8 +304,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
-  const authDirectoryLoadedRef = useRef(false);
-  const authDirectoryLoadingRef = useRef<Promise<void> | null>(null);
+  const usersAdminLoadingRef = useRef<Promise<void> | null>(null);
+  const rolesAdminLoadingRef = useRef<Promise<void> | null>(null);
   const [settings, setSettings] = useState<SiteSettings>(emptyData().settings);
   const [paramUiStringI18n, setParamUiStringI18n] = useState<ParamUiStringI18n[]>([]);
   const typeCatalogLoadedRef = useRef(new Set<string>());
@@ -389,12 +388,12 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       lessonsLoadedRef.current.clear();
       lessonsLoadingRef.current.clear();
 
-      // Auth directory (users/roles/permissions) loads on Users/Roles pages via loadAuthDirectory.
+      // Users / roles / permissions load only on their admin pages.
       setUsers([]);
       setRoles([]);
       setPermissions([]);
-      authDirectoryLoadedRef.current = false;
-      authDirectoryLoadingRef.current = null;
+      usersAdminLoadingRef.current = null;
+      rolesAdminLoadingRef.current = null;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load content from API');
     } finally {
@@ -410,9 +409,9 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   }, [refreshData, bootstrapping]);
 
   useEffect(() => {
-    // Drop cached users/roles when the session changes; pages reload via loadAuthDirectory.
-    authDirectoryLoadedRef.current = false;
-    authDirectoryLoadingRef.current = null;
+    // Drop cached users/roles when the session changes; admin pages reload on next visit.
+    usersAdminLoadingRef.current = null;
+    rolesAdminLoadingRef.current = null;
     if (!token) {
       setUsers([]);
       setRoles([]);
@@ -1110,39 +1109,67 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     await load;
   }, []);
 
-  /** Load users/roles/permissions for Users and Roles admin pages (not for author labels). */
-  const loadAuthDirectory = useCallback(async () => {
+  /** Users admin page: users + roles (roles needed for assignment badges/editor). */
+  const loadUsersAdmin = useCallback(async () => {
     if (!token) {
       setUsers([]);
       setRoles([]);
-      setPermissions([]);
-      authDirectoryLoadedRef.current = false;
       return;
     }
-    if (authDirectoryLoadingRef.current) {
-      await authDirectoryLoadingRef.current;
+    if (usersAdminLoadingRef.current) {
+      await usersAdminLoadingRef.current;
       return;
     }
 
     const load = (async () => {
       try {
-        const [usersRes, rolesRes, permissionsRes] = await Promise.all([
+        const [usersRes, rolesRes] = await Promise.all([
           authApi.listUsers(),
           authApi.listRoles(),
-          authApi.listPermissions(),
         ]);
         setUsers(usersRes.map(mapAuthUser));
         setRoles(rolesRes.map(mapRoleDto));
-        setPermissions(permissionsRes.map(mapPermissionDto));
-        authDirectoryLoadedRef.current = true;
       } catch {
-        authDirectoryLoadedRef.current = false;
+        setUsers([]);
+        setRoles([]);
       } finally {
-        authDirectoryLoadingRef.current = null;
+        usersAdminLoadingRef.current = null;
       }
     })();
 
-    authDirectoryLoadingRef.current = load;
+    usersAdminLoadingRef.current = load;
+    await load;
+  }, [token]);
+
+  /** Roles & Permissions page: full roles catalog + permissions matrix. */
+  const loadRolesAdmin = useCallback(async () => {
+    if (!token) {
+      setRoles([]);
+      setPermissions([]);
+      return;
+    }
+    if (rolesAdminLoadingRef.current) {
+      await rolesAdminLoadingRef.current;
+      return;
+    }
+
+    const load = (async () => {
+      try {
+        const [rolesRes, permissionsRes] = await Promise.all([
+          authApi.listRoles(),
+          authApi.listPermissions(),
+        ]);
+        setRoles(rolesRes.map(mapRoleDto));
+        setPermissions(permissionsRes.map(mapPermissionDto));
+      } catch {
+        setRoles([]);
+        setPermissions([]);
+      } finally {
+        rolesAdminLoadingRef.current = null;
+      }
+    })();
+
+    rolesAdminLoadingRef.current = load;
     await load;
   }, [token]);
 
@@ -1360,7 +1387,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       deleteComment,
       users,
       getUser,
-      loadAuthDirectory,
+      loadUsersAdmin,
+      loadRolesAdmin,
       createUser,
       updateUser,
       banUser,
@@ -1420,7 +1448,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       deleteComment,
       users,
       getUser,
-      loadAuthDirectory,
+      loadUsersAdmin,
+      loadRolesAdmin,
       createUser,
       updateUser,
       banUser,

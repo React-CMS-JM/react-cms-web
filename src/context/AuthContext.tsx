@@ -10,7 +10,6 @@ import {
 import {
   authApi,
   mapAuthUser,
-  mapRoleDto,
   type LoginResponseDto,
 } from '../services/authApi';
 import {
@@ -20,7 +19,7 @@ import {
   saveAuthToken,
   saveAuthUserJson,
 } from '../lib/storage';
-import type { PermissionName, Role } from '../types/rbac';
+import type { PermissionName, Role, RoleName } from '../types/rbac';
 import type { User } from '../types/user';
 
 interface AuthSession {
@@ -33,7 +32,9 @@ interface AuthContextValue {
   currentUser: User | null;
   isGuest: boolean;
   bootstrapping: boolean;
+  /** Session roles from JWT /me (not the full roles catalog). */
   roles: Role[];
+  /** Highest-priority session role, for display. */
   role: Role | undefined;
   permissions: Set<PermissionName>;
   can: (permission: PermissionName) => boolean;
@@ -44,6 +45,15 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+const ROLE_PRIORITY: RoleName[] = [
+  'Administrator',
+  'Content_Editor',
+  'Course_Contributor',
+  'Premium_Member',
+  'Free_Member',
+  'Guest',
+];
 
 function sessionFromLogin(res: LoginResponseDto): AuthSession {
   return {
@@ -63,10 +73,29 @@ function loadCachedSession(): AuthSession | null {
   }
 }
 
+/** Build lightweight Role objects from JWT /me role name strings (no /api/roles catalog). */
+function rolesFromSession(session: AuthSession | null): Role[] {
+  if (!session) {
+    return [
+      {
+        id: -1,
+        name: 'Guest',
+        description: 'Guest',
+        permissions: [],
+      },
+    ];
+  }
+  return session.roles.map((name, index) => ({
+    id: -(index + 1),
+    name: name as RoleName,
+    description: name,
+    permissions: session.permissions,
+  }));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => loadAuthToken());
   const [session, setSession] = useState<AuthSession | null>(() => loadCachedSession());
-  const [catalogRoles, setCatalogRoles] = useState<Role[]>([]);
   const [bootstrapping, setBootstrapping] = useState(true);
 
   const persistSession = useCallback((nextToken: string | null, nextSession: AuthSession | null) => {
@@ -113,25 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [persistSession]);
 
-  useEffect(() => {
-    if (!token) {
-      setCatalogRoles([]);
-      return;
-    }
-    let cancelled = false;
-    void authApi
-      .listRoles()
-      .then((roles) => {
-        if (!cancelled) setCatalogRoles(roles.map(mapRoleDto));
-      })
-      .catch(() => {
-        if (!cancelled) setCatalogRoles([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
-
   const login = useCallback(
     async (email: string, password: string) => {
       const res = await authApi.login(email.trim(), password);
@@ -158,31 +168,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return new Set<PermissionName>();
   }, [session]);
 
-  const roles = useMemo(() => {
-    if (!session) {
-      const guest = catalogRoles.find((r) => r.name === 'Guest');
-      return guest ? [guest] : [];
-    }
-    const fromCatalog = catalogRoles.filter((r) => session.roles.includes(r.name));
-    if (fromCatalog.length) return fromCatalog;
-    return session.roles.map((name, index) => ({
-      id: -(index + 1),
-      name: name as Role['name'],
-      description: name,
-      permissions: session.permissions,
-    }));
-  }, [catalogRoles, session]);
+  const roles = useMemo(() => rolesFromSession(session), [session]);
 
   const role = useMemo(() => {
-    const priority: Role['name'][] = [
-      'Administrator',
-      'Content_Editor',
-      'Course_Contributor',
-      'Premium_Member',
-      'Free_Member',
-      'Guest',
-    ];
-    return [...roles].sort((a, b) => priority.indexOf(a.name) - priority.indexOf(b.name))[0];
+    return [...roles].sort((a, b) => ROLE_PRIORITY.indexOf(a.name) - ROLE_PRIORITY.indexOf(b.name))[0];
   }, [roles]);
 
   const can = useCallback((permission: PermissionName) => permissions.has(permission), [permissions]);
