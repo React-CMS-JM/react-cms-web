@@ -10,8 +10,13 @@ interface RequirePermissionProps {
 
 /** Route guard: redirects guests to /login and members lacking access to /forbidden. */
 export function RequirePermission({ anyOf, children }: RequirePermissionProps) {
-  const { canAny, isGuest } = useAuth();
+  const { canAny, isGuest, bootstrapping } = useAuth();
   const location = useLocation();
+
+  // Avoid redirecting to /login while session restore is still in flight.
+  if (bootstrapping) {
+    return null;
+  }
 
   if (!canAny(anyOf)) {
     if (isGuest) {

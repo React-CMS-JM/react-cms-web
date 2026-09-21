@@ -387,6 +387,19 @@ img.sidebar-logo {
 }
 .admin-content { flex: 1; }
 
+/* Admin shell skeleton (prevents raw UI-string key flash) */
+.sidebar-skeleton .skeleton {
+  background: rgba(255, 255, 255, 0.06);
+}
+.sidebar-skeleton-brand-text { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.skeleton-sidebar-logo { width: 28px; height: 28px; border-radius: 4px; flex-shrink: 0; }
+.skeleton-sidebar-title { width: 110px; height: 14px; }
+.skeleton-sidebar-subtitle { width: 72px; height: 10px; }
+.skeleton-sidebar-link { height: 36px; width: 100%; border-radius: var(--radius); }
+.admin-content-skeleton { display: flex; flex-direction: column; gap: 12px; }
+.skeleton-admin-heading { width: 40%; height: 28px; }
+.admin-content-skeleton-stats { margin-top: 12px; }
+
 /* ── Page Layout ───────────────────────────────────────────────── */
 .page { padding: 32px; max-width: 1160px; }
 .page-append { padding-top: 0; }

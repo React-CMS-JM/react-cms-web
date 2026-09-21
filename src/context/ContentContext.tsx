@@ -290,7 +290,7 @@ function upsertLocalizedPost(list: LocalizedPost[], next: LocalizedPost): Locali
 
 export function ContentProvider({ children }: { children: ReactNode }) {
   const { language } = useLocale();
-  const { token, canAny } = useAuth();
+  const { token, canAny, bootstrapping } = useAuth();
   const canOpenAdmin = canAny(ADMIN_ACCESS_PERMISSIONS);
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -351,9 +351,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
           contentApi.listUiStrings({ lang: language }),
           contentApi.listCategories(language),
           contentApi.listTags(language),
-          canOpenAdmin
-            ? contentApi.listUiStrings({ lang: language, component: ADMIN_UI_COMPONENT }).catch(() => [])
-            : Promise.resolve([]),
+          // Always load admin chrome strings so /admin never flashes raw keys after auth resolves.
+          contentApi.listUiStrings({ lang: language, component: ADMIN_UI_COMPONENT }).catch(() => []),
         ]);
 
       const publicUiStrings = rawPublicUiStrings.filter(
@@ -450,8 +449,10 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   }, [language, token, canOpenAdmin]);
 
   useEffect(() => {
+    // Wait for auth bootstrap so canOpenAdmin / token are correct on the first catalog fetch.
+    if (bootstrapping) return;
     void refreshData();
-  }, [refreshData]);
+  }, [refreshData, bootstrapping]);
 
   const data = useMemo<CMSData>(() => {
     const posts = localizedPosts.map(toPost);
