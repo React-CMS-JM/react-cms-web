@@ -186,9 +186,9 @@ interface ContentContextValue {
 
   users: User[];
   getUser: (id: string) => User | undefined;
-  /** Loads users + roles for the Users admin page (role assignment UI). */
+  /** Loads users for the Users admin page. */
   loadUsersAdmin: () => Promise<void>;
-  /** Loads roles + permissions for the Roles & Permissions admin page. */
+  /** Loads roles + permissions for the Roles & Permissions admin page (only place that fetches /api/roles). */
   loadRolesAdmin: () => Promise<void>;
   createUser: (input: UserInput & { password?: string }) => Promise<User>;
   updateUser: (id: string, input: Partial<UserInput & { password?: string }>) => Promise<User | undefined>;
@@ -1109,11 +1109,10 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     await load;
   }, []);
 
-  /** Users admin page: users + roles (roles needed for assignment badges/editor). */
+  /** Users admin page: user accounts only. */
   const loadUsersAdmin = useCallback(async () => {
     if (!token) {
       setUsers([]);
-      setRoles([]);
       return;
     }
     if (usersAdminLoadingRef.current) {
@@ -1123,15 +1122,10 @@ export function ContentProvider({ children }: { children: ReactNode }) {
 
     const load = (async () => {
       try {
-        const [usersRes, rolesRes] = await Promise.all([
-          authApi.listUsers(),
-          authApi.listRoles(),
-        ]);
+        const usersRes = await authApi.listUsers();
         setUsers(usersRes.map(mapAuthUser));
-        setRoles(rolesRes.map(mapRoleDto));
       } catch {
         setUsers([]);
-        setRoles([]);
       } finally {
         usersAdminLoadingRef.current = null;
       }

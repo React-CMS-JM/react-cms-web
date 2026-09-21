@@ -10,9 +10,11 @@ import { userFullName } from '../../types/user';
 import type { User } from '../../types/user';
 
 export function UsersList() {
-  const { users, roles, updateUser, banUser, unbanUser, loadUsersAdmin } = useContent();
+  const { users, roles, updateUser, banUser, unbanUser, loadUsersAdmin, loadRolesAdmin } =
+    useContent();
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [rolesLoading, setRolesLoading] = useState(false);
   const [banTarget, setBanTarget] = useState<User | null>(null);
   const [banReason, setBanReason] = useState('');
   const [rolesTarget, setRolesTarget] = useState<User | null>(null);
@@ -32,6 +34,10 @@ export function UsersList() {
   const openRoles = (user: User) => {
     setRolesTarget(user);
     setSelectedRoleIds(user.roleIds);
+    if (roles.length === 0) {
+      setRolesLoading(true);
+      void loadRolesAdmin().finally(() => setRolesLoading(false));
+    }
   };
 
   const saveRoles = () => {
@@ -76,10 +82,16 @@ export function UsersList() {
                 </td>
                 <td>
                   <div className="tag-list">
-                    {user.roleIds.map((rid) => {
-                      const role = roles.find((r) => r.id === rid);
-                      return role ? <RoleBadge key={rid} role={role.name} /> : null;
-                    })}
+                    {user.roleIds.length === 0 ? (
+                      <span className="text-muted">—</span>
+                    ) : roles.length === 0 ? (
+                      <span className="text-muted">{user.roleIds.length} role(s)</span>
+                    ) : (
+                      user.roleIds.map((rid) => {
+                        const role = roles.find((r) => r.id === rid);
+                        return role ? <RoleBadge key={rid} role={role.name} /> : null;
+                      })
+                    )}
                   </div>
                 </td>
                 <td>
@@ -149,22 +161,26 @@ export function UsersList() {
         onConfirm={saveRoles}
         confirmLabel="Save Roles"
       >
-        <div className="checkbox-list">
-          {roles.map((role) => (
-            <label key={role.id} className="checkbox-item">
-              <input
-                type="checkbox"
-                checked={selectedRoleIds.includes(role.id)}
-                onChange={() =>
-                  setSelectedRoleIds((prev) =>
-                    prev.includes(role.id) ? prev.filter((id) => id !== role.id) : [...prev, role.id],
-                  )
-                }
-              />
-              {role.name.replace('_', ' ')}
-            </label>
-          ))}
-        </div>
+        {rolesLoading ? (
+          <p className="empty-state">Loading roles…</p>
+        ) : (
+          <div className="checkbox-list">
+            {roles.map((role) => (
+              <label key={role.id} className="checkbox-item">
+                <input
+                  type="checkbox"
+                  checked={selectedRoleIds.includes(role.id)}
+                  onChange={() =>
+                    setSelectedRoleIds((prev) =>
+                      prev.includes(role.id) ? prev.filter((id) => id !== role.id) : [...prev, role.id],
+                    )
+                  }
+                />
+                {role.name.replace('_', ' ')}
+              </label>
+            ))}
+          </div>
+        )}
       </Modal>
     </div>
   );
