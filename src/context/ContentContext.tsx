@@ -59,19 +59,9 @@ import type {
 } from '../types/taxonomy';
 import type { User, UserInput } from '../types/user';
 import type { ParamUiStringI18n } from '../types/paramUi';
-import type { Permission, PermissionName, Role } from '../types/rbac';
+import type { Permission, Role } from '../types/rbac';
 import { useAuth } from './AuthContext';
 import { useLocale } from './LocaleContext';
-
-/** Staff permissions that unlock the admin shell (matches PublicLayout). */
-const ADMIN_ACCESS_PERMISSIONS: PermissionName[] = [
-  'content:create',
-  'content:edit_own',
-  'content:edit_all',
-  'content:publish',
-  'comment:moderate',
-  'user:ban',
-];
 
 const ADMIN_UI_COMPONENT = 'AdminSidebar';
 
@@ -196,6 +186,8 @@ interface ContentContextValue {
 
   users: User[];
   getUser: (id: string) => User | undefined;
+  /** Loads users, roles, and permissions once (Users / Roles / author labels). */
+  ensureAuthDirectoryLoaded: () => Promise<void>;
   createUser: (input: UserInput & { password?: string }) => Promise<User>;
   updateUser: (id: string, input: Partial<UserInput & { password?: string }>) => Promise<User | undefined>;
   banUser: (id: string, reason: string) => Promise<void>;
@@ -222,7 +214,6 @@ interface ContentContextValue {
 const ContentContext = createContext<ContentContextValue | null>(null);
 
 const ADMIN_CATALOG_SIZE = 100;
-const ADMIN_CATALOG_TYPES: ContentTypeSlug[] = ['post', 'service', 'product', 'course'];
 
 function emptyData(): CMSData {
   return {
@@ -290,8 +281,7 @@ function upsertLocalizedPost(list: LocalizedPost[], next: LocalizedPost): Locali
 
 export function ContentProvider({ children }: { children: ReactNode }) {
   const { language } = useLocale();
-  const { token, canAny, bootstrapping } = useAuth();
-  const canOpenAdmin = canAny(ADMIN_ACCESS_PERMISSIONS);
+  const { token, bootstrapping } = useAuth();
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
   const isInitialLoading = loading && !hasLoaded;
@@ -312,6 +302,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const authDirectoryLoadedRef = useRef(false);
+  const authDirectoryLoadingRef = useRef<Promise<void> | null>(null);
   const [settings, setSettings] = useState<SiteSettings>(emptyData().settings);
   const [paramUiStringI18n, setParamUiStringI18n] = useState<ParamUiStringI18n[]>([]);
   const typeCatalogLoadedRef = useRef(new Set<string>());
@@ -375,7 +367,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       typeCatalogLoadingRef.current.clear();
       slugLoadingRef.current.clear();
 
-      // Pages only at bootstrap (nav + static pages). Other types load on demand.
+      // Pages at bootstrap for public nav. Admin content catalogs load on demand via ensureTypeCatalog.
       const pagesRes = await contentApi.listPosts({
         type: 'page',
         lang: language,
@@ -387,72 +379,43 @@ export function ContentProvider({ children }: { children: ReactNode }) {
         (dto.metadata ?? []).map(mapMetadata),
       );
 
-      let catalogPosts: LocalizedPost[] = [];
-      let catalogMetadata: PostMetadata[] = [];
-
-      if (canOpenAdmin) {
-        const [postPages, coursePage] = await Promise.all([
-          Promise.all(
-            (['post', 'service', 'product'] as const).map((type) =>
-              contentApi.listPosts({ type, lang: language, page: 0, size: ADMIN_CATALOG_SIZE }),
-            ),
-          ),
-          coursesApi.listCourses({ lang: language, page: 0, size: ADMIN_CATALOG_SIZE }),
-        ]);
-        const postDtos = postPages.flatMap((page) => page.items);
-        catalogPosts = [
-          ...postDtos.map(mapLocalizedPost),
-          ...coursePage.items.map(mapLocalizedCourse),
-        ];
-        catalogMetadata = [
-          ...postDtos.flatMap((dto) => (dto.metadata ?? []).map(mapMetadata)),
-          ...coursePage.items.flatMap((dto) => (dto.metadata ?? []).map(mapCourseMetadata)),
-        ];
-        for (const type of ADMIN_CATALOG_TYPES) {
-          typeCatalogLoadedRef.current.add(`${type}:${language}`);
-        }
-      }
-
       typeCatalogLoadedRef.current.add(`page:${language}`);
-      setLocalizedPosts([...pagePosts, ...catalogPosts]);
-      setPostMetadata([...pageMetadata, ...catalogMetadata]);
+      setLocalizedPosts(pagePosts);
+      setPostMetadata(pageMetadata);
       setLocalizedLessons([]);
       lessonsLoadedRef.current.clear();
       lessonsLoadingRef.current.clear();
 
-      if (token) {
-        try {
-          const [usersRes, rolesRes, permissionsRes] = await Promise.all([
-            authApi.listUsers(),
-            authApi.listRoles(),
-            authApi.listPermissions(),
-          ]);
-          setUsers(usersRes.map(mapAuthUser));
-          setRoles(rolesRes.map(mapRoleDto));
-          setPermissions(permissionsRes.map(mapPermissionDto));
-        } catch {
-          setUsers([]);
-          setRoles([]);
-          setPermissions([]);
-        }
-      } else {
-        setUsers([]);
-        setRoles([]);
-        setPermissions([]);
-      }
+      // Auth directory (users/roles/permissions) loads on demand via ensureAuthDirectoryLoaded.
+      setUsers([]);
+      setRoles([]);
+      setPermissions([]);
+      authDirectoryLoadedRef.current = false;
+      authDirectoryLoadingRef.current = null;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load content from API');
     } finally {
       setHasLoaded(true);
       setLoading(false);
     }
-  }, [language, token, canOpenAdmin]);
+  }, [language]);
 
   useEffect(() => {
-    // Wait for auth bootstrap so canOpenAdmin / token are correct on the first catalog fetch.
+    // Wait for auth bootstrap so session is settled before the first shell fetch.
     if (bootstrapping) return;
     void refreshData();
   }, [refreshData, bootstrapping]);
+
+  useEffect(() => {
+    // Drop cached users/roles when the session changes; pages reload via ensureAuthDirectoryLoaded.
+    authDirectoryLoadedRef.current = false;
+    authDirectoryLoadingRef.current = null;
+    if (!token) {
+      setUsers([]);
+      setRoles([]);
+      setPermissions([]);
+    }
+  }, [token]);
 
   const data = useMemo<CMSData>(() => {
     const posts = localizedPosts.map(toPost);
@@ -1144,6 +1107,42 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     await load;
   }, []);
 
+  const ensureAuthDirectoryLoaded = useCallback(async () => {
+    if (!token) {
+      setUsers([]);
+      setRoles([]);
+      setPermissions([]);
+      authDirectoryLoadedRef.current = false;
+      return;
+    }
+    if (authDirectoryLoadedRef.current) return;
+    if (authDirectoryLoadingRef.current) {
+      await authDirectoryLoadingRef.current;
+      return;
+    }
+
+    const load = (async () => {
+      try {
+        const [usersRes, rolesRes, permissionsRes] = await Promise.all([
+          authApi.listUsers(),
+          authApi.listRoles(),
+          authApi.listPermissions(),
+        ]);
+        setUsers(usersRes.map(mapAuthUser));
+        setRoles(rolesRes.map(mapRoleDto));
+        setPermissions(permissionsRes.map(mapPermissionDto));
+        authDirectoryLoadedRef.current = true;
+      } catch {
+        // Leave unloaded so a later navigation can retry.
+      } finally {
+        authDirectoryLoadingRef.current = null;
+      }
+    })();
+
+    authDirectoryLoadingRef.current = load;
+    await load;
+  }, [token]);
+
   const ensureCommentsForPost = useCallback(async (postId: string) => {
     if (!postId || commentsFullyLoadedRef.current || commentsLoadedByPostRef.current.has(postId)) {
       return;
@@ -1358,6 +1357,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       deleteComment,
       users,
       getUser,
+      ensureAuthDirectoryLoaded,
       createUser,
       updateUser,
       banUser,
@@ -1417,6 +1417,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       deleteComment,
       users,
       getUser,
+      ensureAuthDirectoryLoaded,
       createUser,
       updateUser,
       banUser,

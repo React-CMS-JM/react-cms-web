@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useContent } from '../../context/ContentContext';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../../components/ui/Avatar';
@@ -10,12 +10,24 @@ import { userFullName } from '../../types/user';
 import type { User } from '../../types/user';
 
 export function UsersList() {
-  const { users, roles, updateUser, banUser, unbanUser } = useContent();
+  const { users, roles, updateUser, banUser, unbanUser, ensureAuthDirectoryLoaded } = useContent();
   const { currentUser } = useAuth();
+  const [loading, setLoading] = useState(true);
   const [banTarget, setBanTarget] = useState<User | null>(null);
   const [banReason, setBanReason] = useState('');
   const [rolesTarget, setRolesTarget] = useState<User | null>(null);
   const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void ensureAuthDirectoryLoaded().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ensureAuthDirectoryLoaded]);
 
   const openRoles = (user: User) => {
     setRolesTarget(user);
@@ -37,6 +49,9 @@ export function UsersList() {
       </header>
 
       <section className="card">
+        {loading ? (
+          <p className="empty-state">Loading…</p>
+        ) : (
         <table className="table">
           <thead>
             <tr>
@@ -105,6 +120,7 @@ export function UsersList() {
             ))}
           </tbody>
         </table>
+        )}
       </section>
 
       <Modal

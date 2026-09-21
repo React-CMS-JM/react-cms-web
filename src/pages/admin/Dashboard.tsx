@@ -1,10 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useContent } from '../../context/ContentContext';
 import { StatusBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-import type { ContentTypeSlug } from '../../types/content';
+import type { ContentTypeSlug, LocalizedPost } from '../../types/content';
 import { userFullName } from '../../types/user';
 
 const ADMIN_PATH_BY_TYPE: Record<ContentTypeSlug, string> = {
@@ -16,50 +16,90 @@ const ADMIN_PATH_BY_TYPE: Record<ContentTypeSlug, string> = {
 };
 
 const ALL_TYPE_SLUGS: ContentTypeSlug[] = ['post', 'page', 'course', 'service', 'product'];
+const DASHBOARD_PREVIEW_SIZE = 6;
+
+type TypeTotals = Record<ContentTypeSlug, number>;
+
+const EMPTY_TOTALS: TypeTotals = {
+  post: 0,
+  page: 0,
+  course: 0,
+  service: 0,
+  product: 0,
+};
 
 export function Dashboard() {
   const {
     comments,
     ensureCommentsLoaded,
-    ensureTypeCatalog,
+    ensureAuthDirectoryLoaded,
     users,
     getUser,
     contentTypes,
-    getLocalizedPostsByType,
+    fetchPostsPage,
+    fetchCoursesPage,
+    language,
   } = useContent();
   const { currentUser, can, role } = useAuth();
+  const [typeTotals, setTypeTotals] = useState<TypeTotals>(EMPTY_TOTALS);
+  const [recentItems, setRecentItems] = useState<LocalizedPost[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   useEffect(() => {
     void ensureCommentsLoaded();
   }, [ensureCommentsLoaded]);
 
   useEffect(() => {
-    for (const slug of ALL_TYPE_SLUGS) {
-      void ensureTypeCatalog(slug);
-    }
-  }, [ensureTypeCatalog]);
+    void ensureAuthDirectoryLoaded();
+  }, [ensureAuthDirectoryLoaded]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatsLoading(true);
+
+    void (async () => {
+      try {
+        const results = await Promise.all(
+          ALL_TYPE_SLUGS.map(async (slug) => {
+            if (slug === 'course') {
+              const page = await fetchCoursesPage(0, DASHBOARD_PREVIEW_SIZE);
+              return { slug, total: page.total, items: page.items };
+            }
+            const page = await fetchPostsPage(slug, 0, DASHBOARD_PREVIEW_SIZE);
+            return { slug, total: page.total, items: page.items };
+          }),
+        );
+        if (cancelled) return;
+
+        const nextTotals = { ...EMPTY_TOTALS };
+        const preview: LocalizedPost[] = [];
+        for (const result of results) {
+          nextTotals[result.slug] = result.total;
+          preview.push(...result.items);
+        }
+        setTypeTotals(nextTotals);
+        setRecentItems(
+          [...preview]
+            .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+            .slice(0, DASHBOARD_PREVIEW_SIZE),
+        );
+      } catch {
+        if (cancelled) return;
+        setTypeTotals(EMPTY_TOTALS);
+        setRecentItems([]);
+      } finally {
+        if (!cancelled) setStatsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [language, fetchPostsPage, fetchCoursesPage]);
 
   const canEditAll = can('content:edit_all');
-
-  const allLocalizedPosts = ALL_TYPE_SLUGS.flatMap((slug) => getLocalizedPostsByType(slug));
-  const visiblePosts = canEditAll
-    ? allLocalizedPosts
-    : allLocalizedPosts.filter((p) => currentUser && p.authorId === currentUser.id);
-
-  const byType = (slug: ContentTypeSlug) => {
-    const type = contentTypes.find((t) => t.slug === slug);
-    if (!type) return [];
-    return visiblePosts.filter((p) => p.contentTypeId === type.id);
-  };
-
-  const publishedCount = visiblePosts.filter((p) => p.status === 'published').length;
-  const draftCount = visiblePosts.filter((p) => p.status === 'draft').length;
   const pendingComments = comments.filter((c) => c.status === 'pending').length;
   const bannedUsers = users.filter((u) => u.isBanned).length;
-
-  const recentItems = [...visiblePosts]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, 6);
 
   return (
     <div className="page">
@@ -90,33 +130,27 @@ export function Dashboard() {
       <div className="stats-grid">
         <div className="stat-card">
           <p className="stat-label">Posts</p>
-          <p className="stat-value">{byType('post').length}</p>
-          <p className="stat-meta">
-            {publishedCount} published overall · {draftCount} drafts
-          </p>
+          <p className="stat-value">{statsLoading ? '—' : typeTotals.post}</p>
+          <p className="stat-meta">All statuses</p>
         </div>
         <div className="stat-card">
           <p className="stat-label">Services</p>
-          <p className="stat-value">{byType('service').length}</p>
-          <p className="stat-meta">
-            {getLocalizedPostsByType('service').filter((p) => p.status === 'published').length} published
-          </p>
+          <p className="stat-value">{statsLoading ? '—' : typeTotals.service}</p>
+          <p className="stat-meta">All statuses</p>
         </div>
         <div className="stat-card">
           <p className="stat-label">Products</p>
-          <p className="stat-value">{byType('product').length}</p>
-          <p className="stat-meta">
-            {getLocalizedPostsByType('product').filter((p) => p.status === 'published').length} published
-          </p>
+          <p className="stat-value">{statsLoading ? '—' : typeTotals.product}</p>
+          <p className="stat-meta">All statuses</p>
         </div>
         <div className="stat-card">
           <p className="stat-label">Pages</p>
-          <p className="stat-value">{byType('page').length}</p>
+          <p className="stat-value">{statsLoading ? '—' : typeTotals.page}</p>
           <p className="stat-meta">Static site pages</p>
         </div>
         <div className="stat-card">
           <p className="stat-label">Courses</p>
-          <p className="stat-value">{byType('course').length}</p>
+          <p className="stat-value">{statsLoading ? '—' : typeTotals.course}</p>
           <p className="stat-meta">Structured lesson content</p>
         </div>
         {can('comment:moderate') && (
@@ -139,7 +173,9 @@ export function Dashboard() {
 
       <section className="card">
         <h2 className="card-title">Recent Activity</h2>
-        {recentItems.length === 0 ? (
+        {statsLoading ? (
+          <p className="empty-state">Loading recent activity…</p>
+        ) : recentItems.length === 0 ? (
           <p className="empty-state">No content yet. Create your first item.</p>
         ) : (
           <table className="table">

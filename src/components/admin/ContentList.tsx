@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useContent } from '../../context/ContentContext';
@@ -28,12 +28,22 @@ export function ContentList({
   extraColumnHeader,
   extraColumn,
 }: ContentListProps) {
-  const { getLocalizedPostsByType, getUser, ensureTypeCatalog } = useContent();
+  const { getLocalizedPostsByType, getUser, ensureTypeCatalog, ensureAuthDirectoryLoaded } =
+    useContent();
   const { can, currentUser } = useAuth();
+  const [catalogLoading, setCatalogLoading] = useState(true);
 
   useEffect(() => {
-    void ensureTypeCatalog(typeSlug);
-  }, [ensureTypeCatalog, typeSlug]);
+    let cancelled = false;
+    setCatalogLoading(true);
+    void (async () => {
+      await Promise.all([ensureTypeCatalog(typeSlug), ensureAuthDirectoryLoaded()]);
+      if (!cancelled) setCatalogLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ensureTypeCatalog, ensureAuthDirectoryLoaded, typeSlug]);
 
   const canEditAll = can('content:edit_all');
   const canEditOwn = can('content:edit_own');
@@ -57,7 +67,9 @@ export function ContentList({
       </header>
 
       <section className="card">
-        {items.length === 0 ? (
+        {catalogLoading ? (
+          <p className="empty-state">Loading…</p>
+        ) : items.length === 0 ? (
           <p className="empty-state">Nothing here yet.</p>
         ) : (
           <table className="table">
