@@ -10,7 +10,7 @@ import { userFullName } from '../../types/user';
 import type { User } from '../../types/user';
 
 export function UsersList() {
-  const { users, roles, updateUser, banUser, unbanUser, ensureAuthDirectoryLoaded } = useContent();
+  const { users, roles, updateUser, banUser, unbanUser, loadAuthDirectory } = useContent();
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [banTarget, setBanTarget] = useState<User | null>(null);
@@ -21,13 +21,13 @@ export function UsersList() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void ensureAuthDirectoryLoaded().finally(() => {
+    void loadAuthDirectory().finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [ensureAuthDirectoryLoaded]);
+  }, [loadAuthDirectory]);
 
   const openRoles = (user: User) => {
     setRolesTarget(user);

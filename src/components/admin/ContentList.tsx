@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useContent } from '../../context/ContentContext';
+import { useUsersByIds, userSummaryDisplayName } from '../../hooks/useUsersByIds';
 import { StatusBadge, AccessBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import type { ContentTypeSlug, LocalizedPost } from '../../types/content';
@@ -28,31 +29,34 @@ export function ContentList({
   extraColumnHeader,
   extraColumn,
 }: ContentListProps) {
-  const { getLocalizedPostsByType, getUser, ensureTypeCatalog, ensureAuthDirectoryLoaded } =
-    useContent();
+  const { getLocalizedPostsByType, ensureTypeCatalog } = useContent();
   const { can, currentUser } = useAuth();
   const [catalogLoading, setCatalogLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setCatalogLoading(true);
-    void (async () => {
-      await Promise.all([ensureTypeCatalog(typeSlug), ensureAuthDirectoryLoaded()]);
+    void ensureTypeCatalog(typeSlug).finally(() => {
       if (!cancelled) setCatalogLoading(false);
-    })();
+    });
     return () => {
       cancelled = true;
     };
-  }, [ensureTypeCatalog, ensureAuthDirectoryLoaded, typeSlug]);
+  }, [ensureTypeCatalog, typeSlug]);
 
   const canEditAll = can('content:edit_all');
   const canEditOwn = can('content:edit_own');
 
-  let items = getLocalizedPostsByType(typeSlug);
-  if (!canEditAll) {
-    items = canEditOwn && currentUser ? items.filter((p) => p.authorId === currentUser.id) : [];
-  }
-  items = [...items].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  const items = useMemo(() => {
+    let list = getLocalizedPostsByType(typeSlug);
+    if (!canEditAll) {
+      list = canEditOwn && currentUser ? list.filter((p) => p.authorId === currentUser.id) : [];
+    }
+    return [...list].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }, [getLocalizedPostsByType, typeSlug, canEditAll, canEditOwn, currentUser]);
+
+  const authorIds = useMemo(() => items.map((item) => item.authorId), [items]);
+  const authorsById = useUsersByIds(authorIds);
 
   return (
     <div className="page">
@@ -86,7 +90,7 @@ export function ContentList({
             </thead>
             <tbody>
               {items.map((item) => {
-                const author = getUser(item.authorId);
+                const authorName = userSummaryDisplayName(authorsById[item.authorId]);
                 return (
                   <tr key={item.id}>
                     <td>
@@ -95,7 +99,7 @@ export function ContentList({
                       </Link>
                       <div className="table-link-muted">/{item.slug}</div>
                     </td>
-                    <td className="text-muted">{author ? `${author.firstName} ${author.lastName}` : '—'}</td>
+                    <td className="text-muted">{authorName || '—'}</td>
                     <td>
                       <AccessBadge level={item.accessLevel} />
                     </td>

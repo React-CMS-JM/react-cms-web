@@ -1,17 +1,34 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useContent } from '../../context/ContentContext';
 import { useLocale } from '../../context/LocaleContext';
+import { useUsersByIds, userSummaryDisplayName } from '../../hooks/useUsersByIds';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { Textarea } from '../ui/Textarea';
-import { userFullName } from '../../types/user';
 import type { Comment } from '../../types/comment';
+import type { User } from '../../types/user';
 import { Link } from 'react-router-dom';
 import { contentApi } from '../../services/contentApi';
+import type { UserSummaryDto } from '../../services/authApi';
+
+function summaryAsUser(summary: UserSummaryDto): User {
+  return {
+    id: summary.id,
+    email: '',
+    firstName: summary.firstName,
+    lastName: summary.lastName,
+    avatarColor: summary.avatarColor,
+    isBanned: false,
+    banReason: null,
+    roleIds: [],
+    createdAt: '',
+    updatedAt: '',
+  };
+}
 
 export function CommentsSection({ postId }: { postId: string }) {
-  const { getCommentsByPost, ensureCommentsForPost, createComment, getUser } = useContent();
+  const { getCommentsByPost, ensureCommentsForPost, createComment } = useContent();
   const { currentUser, can, isGuest } = useAuth();
   const { language } = useLocale();
   const [content, setContent] = useState('');
@@ -35,6 +52,8 @@ export function CommentsSection({ postId }: { postId: string }) {
   const comments = getCommentsByPost(postId).filter((c) => c.status === 'approved');
   const topLevel = comments.filter((c) => !c.parentCommentId);
   const repliesOf = (id: string) => comments.filter((c) => c.parentCommentId === id);
+  const authorIds = useMemo(() => comments.map((c) => c.userId), [comments]);
+  const authorsById = useUsersByIds(authorIds);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -92,8 +111,9 @@ export function CommentsSection({ postId }: { postId: string }) {
   };
 
   const renderComment = (comment: Comment, isReply = false) => {
-    const author = getUser(comment.userId);
-    if (!author) return null;
+    const summary = authorsById[comment.userId];
+    if (!summary) return null;
+    const author = summaryAsUser(summary);
     const needsTranslation = comment.languageCode !== language;
     const showingTranslation = Boolean(translationByComment[comment.id]);
     const translationError = translationErrorByComment[comment.id];
@@ -103,7 +123,7 @@ export function CommentsSection({ postId }: { postId: string }) {
         <Avatar user={author} size={32} />
         <div className="comment-body">
           <p className="comment-author">
-            {userFullName(author)}
+            {userSummaryDisplayName(summary)}
             <span className="comment-date">{new Date(comment.createdAt).toLocaleDateString()}</span>
           </p>
           <p className="comment-content">{comment.content}</p>

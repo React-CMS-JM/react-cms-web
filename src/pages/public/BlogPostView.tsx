@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { AccessBadge } from '../../components/ui/Badge';
@@ -6,9 +6,26 @@ import { Avatar } from '../../components/ui/Avatar';
 import { CommentsSection } from '../../components/content/CommentsSection';
 import { PremiumGate } from '../../components/content/PremiumGate';
 import { useContent } from '../../context/ContentContext';
+import { useUsersByIds, userSummaryDisplayName } from '../../hooks/useUsersByIds';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
-import { userFullName } from '../../types/user';
+import type { User } from '../../types/user';
+import type { UserSummaryDto } from '../../services/authApi';
+
+function summaryAsUser(summary: UserSummaryDto): User {
+  return {
+    id: summary.id,
+    email: '',
+    firstName: summary.firstName,
+    lastName: summary.lastName,
+    avatarColor: summary.avatarColor,
+    isBanned: false,
+    banReason: null,
+    roleIds: [],
+    createdAt: '',
+    updatedAt: '',
+  };
+}
 
 export function BlogPostView() {
   const { slug } = useParams<{ slug: string }>();
@@ -16,7 +33,6 @@ export function BlogPostView() {
     getLocalizedPostBySlug,
     ensurePostBySlug,
     incrementViewCount,
-    getUser,
     getLocalizedCategories,
     getLocalizedTags,
   } = useContent();
@@ -26,6 +42,8 @@ export function BlogPostView() {
   const localizedTags = getLocalizedTags();
   const counted = useRef(false);
   const [resolving, setResolving] = useState(!!slug && !post);
+  const authorIds = useMemo(() => (post ? [post.authorId] : []), [post]);
+  const authorsById = useUsersByIds(authorIds);
 
   useEffect(() => {
     if (!slug || post) {
@@ -69,7 +87,8 @@ export function BlogPostView() {
     );
   }
 
-  const author = getUser(post.authorId);
+  const authorSummary = authorsById[post.authorId];
+  const author = authorSummary ? summaryAsUser(authorSummary) : undefined;
 
   return (
     <PublicLayout>
@@ -83,7 +102,7 @@ export function BlogPostView() {
             {author && (
               <span className="post-author">
                 <Avatar user={author} size={24} />
-                {userFullName(author)}
+                {userSummaryDisplayName(authorSummary)}
               </span>
             )}
             <time dateTime={post.publishedAt ?? undefined}>

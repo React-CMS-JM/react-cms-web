@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useContent } from '../../context/ContentContext';
+import { useUsersByIds, userSummaryDisplayName } from '../../hooks/useUsersByIds';
 import { CommentStatusBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
@@ -11,7 +12,6 @@ export function CommentsModeration() {
     comments,
     ensureCommentsLoaded,
     getLocalizedPost,
-    getUser,
     setCommentStatus,
     deleteComment,
   } = useContent();
@@ -21,9 +21,16 @@ export function CommentsModeration() {
     void ensureCommentsLoaded();
   }, [ensureCommentsLoaded]);
 
-  const filtered = [...comments]
-    .filter((c) => filter === 'all' || c.status === filter)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const filtered = useMemo(
+    () =>
+      [...comments]
+        .filter((c) => filter === 'all' || c.status === filter)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [comments, filter],
+  );
+
+  const authorIds = useMemo(() => filtered.map((c) => c.userId), [filtered]);
+  const authorsById = useUsersByIds(authorIds);
 
   return (
     <div className="page">
@@ -61,13 +68,13 @@ export function CommentsModeration() {
             </thead>
             <tbody>
               {filtered.map((comment) => {
-                const author = getUser(comment.userId);
+                const authorName = userSummaryDisplayName(authorsById[comment.userId]);
                 const post = getLocalizedPost(comment.postId);
                 return (
                   <tr key={comment.id}>
                     <td className="comment-cell">{comment.content}</td>
                     <td className="text-muted">{comment.languageCode}</td>
-                    <td className="text-muted">{author ? `${author.firstName} ${author.lastName}` : 'Unknown'}</td>
+                    <td className="text-muted">{authorName || 'Unknown'}</td>
                     <td className="text-muted">
                       {post ? <Link to={`/admin/posts/${post.id}`}>{post.title}</Link> : '—'}
                     </td>

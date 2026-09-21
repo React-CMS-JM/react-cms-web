@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { useContent } from '../../context/ContentContext';
 import { useLocale } from '../../context/LocaleContext';
 import { StatusBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import type { ContentTypeSlug, PostStatus } from '../../types/content';
-import type { User } from '../../types/user';
-import { userFullName } from '../../types/user';
 import {
   authApi,
   type UserStatsDto,
@@ -36,7 +33,6 @@ const EMPTY_DASHBOARD: AdminDashboardDto = {
 const EMPTY_USER_STATS: UserStatsDto = { total: 0, banned: 0 };
 
 export function Dashboard() {
-  const { ensureAuthDirectoryLoaded, getUser } = useContent();
   const { language } = useLocale();
   const { currentUser, can, role } = useAuth();
   const [dashboard, setDashboard] = useState<AdminDashboardDto>(EMPTY_DASHBOARD);
@@ -47,11 +43,6 @@ export function Dashboard() {
   const canModerateComments = can('comment:moderate');
   const canBanUsers = can('user:ban');
   const canEditAll = can('content:edit_all');
-
-  useEffect(() => {
-    // Author names for Recent Activity (slim stats endpoints do not include user profiles).
-    void ensureAuthDirectoryLoaded();
-  }, [ensureAuthDirectoryLoaded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,20 +153,14 @@ export function Dashboard() {
         ) : dashboard.recent.length === 0 ? (
           <p className="empty-state">No content yet. Create your first item.</p>
         ) : (
-          <RecentActivityTable items={dashboard.recent} getUser={getUser} />
+          <RecentActivityTable items={dashboard.recent} />
         )}
       </section>
     </div>
   );
 }
 
-function RecentActivityTable({
-  items,
-  getUser,
-}: {
-  items: AdminRecentActivityDto[];
-  getUser: (id: string) => User | undefined;
-}) {
+function RecentActivityTable({ items }: { items: AdminRecentActivityDto[] }) {
   return (
     <table className="table">
       <thead>
@@ -188,7 +173,6 @@ function RecentActivityTable({
       </thead>
       <tbody>
         {items.map((item) => {
-          const author = getUser(item.authorId);
           const adminPath = ADMIN_PATH_BY_TYPE[item.contentTypeSlug] ?? 'posts';
           return (
             <tr key={item.id}>
@@ -197,7 +181,7 @@ function RecentActivityTable({
                   {item.title || 'Untitled'}
                 </Link>
               </td>
-              <td className="text-muted">{author ? userFullName(author) : '—'}</td>
+              <td className="text-muted">{item.authorName || '—'}</td>
               <td>
                 <StatusBadge status={item.status as PostStatus} />
               </td>

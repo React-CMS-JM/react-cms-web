@@ -1,7 +1,7 @@
 import { apiEnv } from '../config/env';
 import type { PermissionName, RoleName } from '../types/rbac';
 import type { User } from '../types/user';
-import { apiRequest } from './httpClient';
+import { apiRequest, withQuery } from './httpClient';
 
 export interface AuthUserDto {
   id: string;
@@ -41,6 +41,13 @@ export interface RoleDto {
 export interface UserStatsDto {
   total: number;
   banned: number;
+}
+
+export interface UserSummaryDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  avatarColor: string;
 }
 
 export interface PermissionDto {
@@ -105,6 +112,17 @@ export const authApi = {
 
   getUserStats() {
     return apiRequest<UserStatsDto>(base(), '/api/users/stats');
+  },
+
+  getUsersByIds(ids: string[]) {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) {
+      return Promise.resolve([] as UserSummaryDto[]);
+    }
+    return apiRequest<UserSummaryDto[]>(
+      base(),
+      withQuery('/api/users/by-ids', { ids: unique.join(',') }),
+    );
   },
 
   createUser(body: CreateUserRequest) {

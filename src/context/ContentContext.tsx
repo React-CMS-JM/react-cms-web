@@ -186,8 +186,11 @@ interface ContentContextValue {
 
   users: User[];
   getUser: (id: string) => User | undefined;
-  /** Loads users, roles, and permissions once (Users / Roles / author labels). */
-  ensureAuthDirectoryLoaded: () => Promise<void>;
+  /**
+   * Loads users, roles, and permissions for the Users / Roles admin pages only.
+   * Not used for author labels (those use /users/by-ids or dashboard enrichment).
+   */
+  loadAuthDirectory: () => Promise<void>;
   createUser: (input: UserInput & { password?: string }) => Promise<User>;
   updateUser: (id: string, input: Partial<UserInput & { password?: string }>) => Promise<User | undefined>;
   banUser: (id: string, reason: string) => Promise<void>;
@@ -386,7 +389,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       lessonsLoadedRef.current.clear();
       lessonsLoadingRef.current.clear();
 
-      // Auth directory (users/roles/permissions) loads on demand via ensureAuthDirectoryLoaded.
+      // Auth directory (users/roles/permissions) loads on Users/Roles pages via loadAuthDirectory.
       setUsers([]);
       setRoles([]);
       setPermissions([]);
@@ -407,7 +410,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   }, [refreshData, bootstrapping]);
 
   useEffect(() => {
-    // Drop cached users/roles when the session changes; pages reload via ensureAuthDirectoryLoaded.
+    // Drop cached users/roles when the session changes; pages reload via loadAuthDirectory.
     authDirectoryLoadedRef.current = false;
     authDirectoryLoadingRef.current = null;
     if (!token) {
@@ -1107,7 +1110,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     await load;
   }, []);
 
-  const ensureAuthDirectoryLoaded = useCallback(async () => {
+  /** Load users/roles/permissions for Users and Roles admin pages (not for author labels). */
+  const loadAuthDirectory = useCallback(async () => {
     if (!token) {
       setUsers([]);
       setRoles([]);
@@ -1115,7 +1119,6 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       authDirectoryLoadedRef.current = false;
       return;
     }
-    if (authDirectoryLoadedRef.current) return;
     if (authDirectoryLoadingRef.current) {
       await authDirectoryLoadingRef.current;
       return;
@@ -1133,7 +1136,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
         setPermissions(permissionsRes.map(mapPermissionDto));
         authDirectoryLoadedRef.current = true;
       } catch {
-        // Leave unloaded so a later navigation can retry.
+        authDirectoryLoadedRef.current = false;
       } finally {
         authDirectoryLoadingRef.current = null;
       }
@@ -1357,7 +1360,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       deleteComment,
       users,
       getUser,
-      ensureAuthDirectoryLoaded,
+      loadAuthDirectory,
       createUser,
       updateUser,
       banUser,
@@ -1417,7 +1420,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       deleteComment,
       users,
       getUser,
-      ensureAuthDirectoryLoaded,
+      loadAuthDirectory,
       createUser,
       updateUser,
       banUser,

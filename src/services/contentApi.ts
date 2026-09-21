@@ -54,6 +54,7 @@ export interface AdminRecentActivityDto {
   id: string;
   title: string;
   authorId: string;
+  authorName: string;
   status: string;
   contentTypeSlug: string;
   updatedAt: string;
