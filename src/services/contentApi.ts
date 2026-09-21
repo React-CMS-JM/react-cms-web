@@ -50,6 +50,21 @@ export interface LocalizedPostDto {
   metadata?: PostMetadataDto[];
 }
 
+export interface AdminRecentActivityDto {
+  id: string;
+  title: string;
+  authorId: string;
+  status: string;
+  contentTypeSlug: string;
+  updatedAt: string;
+}
+
+export interface AdminDashboardDto {
+  counts: Record<string, number>;
+  pendingComments: number;
+  recent: AdminRecentActivityDto[];
+}
+
 export interface ContentTypeDto {
   id: number;
   name: string;
@@ -251,6 +266,10 @@ export function mapSiteSettings(dto: Partial<SiteSettings> | null | undefined): 
 export const contentApi = {
   listContentTypes() {
     return apiRequest<ContentTypeDto[]>(base(), '/api/content-types', { auth: false });
+  },
+
+  getAdminDashboard(params?: { lang?: string; recentLimit?: number }) {
+    return apiRequest<AdminDashboardDto>(base(), withQuery('/api/admin/dashboard', params));
   },
 
   listPosts(params: {

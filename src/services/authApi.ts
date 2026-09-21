@@ -38,6 +38,11 @@ export interface RoleDto {
   permissions: string[];
 }
 
+export interface UserStatsDto {
+  total: number;
+  banned: number;
+}
+
 export interface PermissionDto {
   id: number;
   name: string;
@@ -96,6 +101,10 @@ export const authApi = {
 
   listUsers() {
     return apiRequest<AuthUserDto[]>(base(), '/api/users');
+  },
+
+  getUserStats() {
+    return apiRequest<UserStatsDto>(base(), '/api/users/stats');
   },
 
   createUser(body: CreateUserRequest) {

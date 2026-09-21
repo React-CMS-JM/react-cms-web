@@ -19,6 +19,10 @@ export interface LocalizedCourseDto extends LocalizedPostDto {
   lessonCount?: number;
 }
 
+export interface CourseStatsDto {
+  total: number;
+}
+
 export interface LocalizedLessonDto {
   id: string;
   courseId: string;
@@ -124,6 +128,10 @@ export const coursesApi = {
       withQuery('/api/courses', params),
       { auth: false },
     );
+  },
+
+  getStats() {
+    return apiRequest<CourseStatsDto>(base(), '/api/courses/stats');
   },
 
   getCourse(id: string, lang?: string) {
