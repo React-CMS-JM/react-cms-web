@@ -2,7 +2,9 @@ import { useState, type FormEvent } from 'react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
+import { ListingPagination } from '../public/ListingPagination';
 import { slugify } from '../../types/content';
+import { isTaxonomySearchEligible } from '../../lib/queryClient';
 
 interface TaxonomyItem {
   id: number;
@@ -15,6 +17,13 @@ interface TaxonomyManagerProps {
   title: string;
   description: string;
   items: TaxonomyItem[];
+  loading?: boolean;
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  searchValue: string;
+  onSearchValueChange: (value: string) => void;
+  onSearchSubmit: () => void;
   onCreate: (input: { name: string; slug: string }) => unknown | Promise<unknown>;
   onUpdate: (id: number, input: { name: string; slug: string }) => unknown | Promise<unknown>;
   onDelete: (id: number) => unknown | Promise<unknown>;
@@ -24,6 +33,13 @@ export function TaxonomyManager({
   title,
   description,
   items,
+  loading,
+  page,
+  totalPages,
+  onPageChange,
+  searchValue,
+  onSearchValueChange,
+  onSearchSubmit,
   onCreate,
   onUpdate,
   onDelete,
@@ -63,6 +79,13 @@ export function TaxonomyManager({
     })();
   };
 
+  const handleSearchSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = searchValue.trim();
+    if (trimmed && !isTaxonomySearchEligible(trimmed)) return;
+    onSearchSubmit();
+  };
+
   return (
     <div className="page">
       <header className="page-header">
@@ -74,7 +97,21 @@ export function TaxonomyManager({
       </header>
 
       <section className="card">
-        {items.length === 0 ? (
+        <form className="taxonomy-search-bar" onSubmit={handleSearchSubmit}>
+          <Input
+            label="Search"
+            value={searchValue}
+            onChange={(e) => onSearchValueChange(e.target.value)}
+            placeholder="At least 2 characters…"
+          />
+          <Button type="submit" variant="secondary">
+            Search
+          </Button>
+        </form>
+
+        {loading ? (
+          <p className="empty-state">Loading…</p>
+        ) : items.length === 0 ? (
           <p className="empty-state">Nothing here yet.</p>
         ) : (
           <table className="table">
@@ -95,19 +132,17 @@ export function TaxonomyManager({
                   <td className="text-muted">/{item.slug}</td>
                   <td className="text-muted">{item.usageCount ?? 0} items</td>
                   <td>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setDeleteTarget(item)}
-                    >
+                    <Button size="sm" variant="danger" onClick={() => setDeleteTarget(item)}>
                       Delete
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
+
+        <ListingPagination page={page} totalPages={totalPages} onPageChange={onPageChange} />
       </section>
 
       <Modal

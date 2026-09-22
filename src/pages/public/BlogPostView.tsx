@@ -7,6 +7,7 @@ import { CommentsSection } from '../../components/content/CommentsSection';
 import { PremiumGate } from '../../components/content/PremiumGate';
 import { useContent } from '../../context/ContentContext';
 import { useUsersByIds, userSummaryDisplayName } from '../../hooks/useUsersByIds';
+import { useTaxonomyLabels } from '../../hooks/useTaxonomy';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 import type { User } from '../../types/user';
@@ -33,17 +34,16 @@ export function BlogPostView() {
     getLocalizedPostBySlug,
     ensurePostBySlug,
     incrementViewCount,
-    getLocalizedCategories,
-    getLocalizedTags,
+    language,
   } = useContent();
   const t = useUiString();
   const post = slug ? getLocalizedPostBySlug(slug, 'post') : undefined;
-  const localizedCategories = getLocalizedCategories();
-  const localizedTags = getLocalizedTags();
   const counted = useRef(false);
   const [resolving, setResolving] = useState(!!slug && !post);
   const authorIds = useMemo(() => (post ? [post.authorId] : []), [post]);
   const authorsById = useUsersByIds(authorIds);
+  const categoriesById = useTaxonomyLabels('categories', post?.categoryIds ?? [], language);
+  const tagsById = useTaxonomyLabels('tags', post?.tagIds ?? [], language);
 
   useEffect(() => {
     if (!slug || post) {
@@ -112,7 +112,7 @@ export function BlogPostView() {
           </div>
           <div className="tag-list">
             {post.categoryIds.map((cid) => {
-              const category = localizedCategories.find((c) => c.id === cid);
+              const category = categoriesById.get(cid);
               return category ? (
                 <span key={cid} className="tag tag-category">
                   {category.name}
@@ -120,7 +120,7 @@ export function BlogPostView() {
               ) : null;
             })}
             {post.tagIds.map((tid) => {
-              const tag = localizedTags.find((t) => t.id === tid);
+              const tag = tagsById.get(tid);
               return tag ? (
                 <span key={tid} className="tag">
                   {tag.name}

@@ -16,13 +16,11 @@ import {
 } from '../services/authApi';
 import {
   contentApi,
-  mapCategory,
   mapComment,
   mapContentType,
   mapLocalizedPost,
   mapMetadata,
   mapSiteSettings,
-  mapTag,
   mapUiString,
   type PageResult,
 } from '../services/contentApi';
@@ -49,14 +47,6 @@ import type {
 } from '../types/content';
 import type { SiteSettings } from '../types/settings';
 import { DEFAULT_SETTINGS, resolveHomeHero } from '../types/settings';
-import type {
-  Category,
-  CategoryI18nInput,
-  LocalizedCategory,
-  LocalizedTag,
-  Tag,
-  TagI18nInput,
-} from '../types/taxonomy';
 import type { User, UserInput } from '../types/user';
 import type { ParamUiStringI18n } from '../types/paramUi';
 import type { Permission, Role } from '../types/rbac';
@@ -151,28 +141,6 @@ interface ContentContextValue {
     },
   ) => Promise<LocalizedCourseLesson | undefined>;
   deleteLesson: (id: string) => Promise<void>;
-
-  categories: Category[];
-  getLocalizedCategories: (lang?: LanguageCode) => LocalizedCategory[];
-  createCategory: (translation: Omit<CategoryI18nInput, 'categoryId'>) => Promise<LocalizedCategory>;
-  updateCategory: (
-    id: number,
-    translation: Partial<Omit<CategoryI18nInput, 'categoryId' | 'languageCode'>> & {
-      languageCode?: LanguageCode;
-    },
-  ) => Promise<LocalizedCategory | undefined>;
-  deleteCategory: (id: number) => Promise<void>;
-
-  tags: Tag[];
-  getLocalizedTags: (lang?: LanguageCode) => LocalizedTag[];
-  createTag: (translation: Omit<TagI18nInput, 'tagId'>) => Promise<LocalizedTag>;
-  updateTag: (
-    id: number,
-    translation: Partial<Omit<TagI18nInput, 'tagId' | 'languageCode'>> & {
-      languageCode?: LanguageCode;
-    },
-  ) => Promise<LocalizedTag | undefined>;
-  deleteTag: (id: number) => Promise<void>;
 
   comments: Comment[];
   getCommentsByPost: (postId: string) => Comment[];
@@ -292,8 +260,6 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const [localizedLessons, setLocalizedLessons] = useState<LocalizedCourseLesson[]>([]);
   const lessonsLoadedRef = useRef(new Set<string>());
   const lessonsLoadingRef = useRef(new Map<string, Promise<void>>());
-  const [localizedCategories, setLocalizedCategories] = useState<LocalizedCategory[]>([]);
-  const [localizedTags, setLocalizedTags] = useState<LocalizedTag[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const commentsFullyLoadedRef = useRef(false);
   const commentsLoadingRef = useRef<Promise<void> | null>(null);
@@ -337,14 +303,12 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [types, settingsRes, rawPublicUiStrings, categoriesRes, tagsRes, adminUiStrings] =
+      const [types, settingsRes, rawPublicUiStrings, adminUiStrings] =
         await Promise.all([
           contentApi.listContentTypes(),
           contentApi.getSettings(language),
           // Default list excludes AdminSidebar on the content service (also filtered client-side).
           contentApi.listUiStrings({ lang: language }),
-          contentApi.listCategories(language),
-          contentApi.listTags(language),
           // Always load admin chrome strings so /admin never flashes raw keys after auth resolves.
           contentApi.listUiStrings({ lang: language, component: ADMIN_UI_COMPONENT }).catch(() => []),
         ]);
@@ -358,8 +322,6 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       setContentTypes(mappedTypes);
       setSettings(mapSiteSettings(settingsRes));
       setParamUiStringI18n(uiStringDtos.map(mapUiString));
-      setLocalizedCategories(categoriesRes.map(mapCategory));
-      setLocalizedTags(tagsRes.map(mapTag));
       setComments([]);
       commentsFullyLoadedRef.current = false;
       commentsLoadingRef.current = null;
@@ -445,28 +407,10 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       createdAt: l.createdAt,
       updatedAt: l.updatedAt,
     }));
-    const categories = localizedCategories.map((c) => ({
-      id: c.id,
-      dbDescription: c.dbDescription,
-    }));
-    const categoryI18n = localizedCategories.map((c, index) => ({
-      id: index + 1,
-      categoryId: c.id,
-      languageCode: c.languageCode,
-      name: c.name,
-      slug: c.slug,
-    }));
-    const tags = localizedTags.map((t) => ({
-      id: t.id,
-      dbDescription: t.dbDescription,
-    }));
-    const tagI18n = localizedTags.map((t, index) => ({
-      id: index + 1,
-      tagId: t.id,
-      languageCode: t.languageCode,
-      name: t.name,
-      slug: t.slug,
-    }));
+    const categories: CMSData['categories'] = [];
+    const categoryI18n: CMSData['categoryI18n'] = [];
+    const tags: CMSData['tags'] = [];
+    const tagI18n: CMSData['tagI18n'] = [];
 
     return {
       users,
@@ -490,8 +434,6 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   }, [
     localizedPosts,
     localizedLessons,
-    localizedCategories,
-    localizedTags,
     comments,
     postMetadata,
     users,
@@ -976,110 +918,6 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     }
   }, [localizedLessons]);
 
-  const getLocalizedCategories = useCallback(
-    (_lang?: LanguageCode) => localizedCategories,
-    [localizedCategories],
-  );
-
-  const createCategory = useCallback(
-    async (translation: Omit<CategoryI18nInput, 'categoryId'>): Promise<LocalizedCategory> => {
-      const created = mapCategory(
-        await contentApi.createCategory({
-          languageCode: translation.languageCode,
-          name: translation.name,
-          slug: translation.slug,
-          dbDescription: translation.name,
-        }),
-      );
-      setLocalizedCategories((prev) => [...prev, created]);
-      return created;
-    },
-    [],
-  );
-
-  const updateCategory = useCallback(
-    async (
-      id: number,
-      translation: Partial<Omit<CategoryI18nInput, 'categoryId' | 'languageCode'>> & {
-        languageCode?: LanguageCode;
-      },
-    ): Promise<LocalizedCategory | undefined> => {
-      const existing = localizedCategories.find((c) => c.id === id);
-      if (!existing) return undefined;
-      const updated = mapCategory(
-        await contentApi.updateCategory(id, {
-          languageCode: translation.languageCode ?? language,
-          name: translation.name,
-          slug: translation.slug,
-          dbDescription: translation.name,
-        }),
-      );
-      setLocalizedCategories((prev) => prev.map((c) => (c.id === id ? updated : c)));
-      return updated;
-    },
-    [localizedCategories, language],
-  );
-
-  const deleteCategory = useCallback(async (id: number) => {
-    await contentApi.deleteCategory(id);
-    setLocalizedCategories((prev) => prev.filter((c) => c.id !== id));
-    setLocalizedPosts((prev) =>
-      prev.map((p) => ({ ...p, categoryIds: p.categoryIds.filter((cid) => cid !== id) })),
-    );
-  }, []);
-
-  const getLocalizedTags = useCallback(
-    (_lang?: LanguageCode) => localizedTags,
-    [localizedTags],
-  );
-
-  const createTag = useCallback(
-    async (translation: Omit<TagI18nInput, 'tagId'>): Promise<LocalizedTag> => {
-      const created = mapTag(
-        await contentApi.createTag({
-          languageCode: translation.languageCode,
-          name: translation.name,
-          slug: translation.slug,
-          dbDescription: translation.name,
-        }),
-      );
-      setLocalizedTags((prev) => [...prev, created]);
-      return created;
-    },
-    [],
-  );
-
-  const updateTag = useCallback(
-    async (
-      id: number,
-      translation: Partial<Omit<TagI18nInput, 'tagId' | 'languageCode'>> & {
-        languageCode?: LanguageCode;
-      },
-    ): Promise<LocalizedTag | undefined> => {
-      const existing = localizedTags.find((t) => t.id === id);
-      if (!existing) return undefined;
-      const updated = mapTag(
-        await contentApi.updateTag(id, {
-          languageCode: translation.languageCode ?? language,
-          name: translation.name,
-          slug: translation.slug,
-          dbDescription: translation.name,
-        }),
-      );
-      setLocalizedTags((prev) => prev.map((t) => (t.id === id ? updated : t)));
-      return updated;
-    },
-    [localizedTags, language],
-  );
-
-  const deleteTag = useCallback(async (id: number) => {
-    await contentApi.deleteTag(id);
-    setLocalizedTags((prev) => prev.filter((t) => t.id !== id));
-    setLocalizedPosts((prev) =>
-      prev.map((p) => ({ ...p, tagIds: p.tagIds.filter((tid) => tid !== id) })),
-    );
-  }, []);
-
   const getCommentsByPost = useCallback(
     (postId: string) => comments.filter((c) => c.postId === postId),
     [comments],
@@ -1362,16 +1200,6 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       createLesson,
       updateLesson,
       deleteLesson,
-      categories: data.categories,
-      getLocalizedCategories,
-      createCategory,
-      updateCategory,
-      deleteCategory,
-      tags: data.tags,
-      getLocalizedTags,
-      createTag,
-      updateTag,
-      deleteTag,
       comments,
       getCommentsByPost,
       ensureCommentsLoaded,
@@ -1425,14 +1253,6 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       createLesson,
       updateLesson,
       deleteLesson,
-      getLocalizedCategories,
-      createCategory,
-      updateCategory,
-      deleteCategory,
-      getLocalizedTags,
-      createTag,
-      updateTag,
-      deleteTag,
       comments,
       getCommentsByPost,
       ensureCommentsLoaded,

@@ -751,6 +751,18 @@ img.public-brand-logo {
   font-size: .875rem;
   color: var(--color-text-muted);
 }
+.taxonomy-search-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.taxonomy-search-bar .field {
+  flex: 1;
+  min-width: 200px;
+  margin-bottom: 0;
+}
 .post-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);

@@ -13,6 +13,8 @@ export interface SearchableMultiSelectProps {
   data: SearchableMultiSelectOption[];
   value: string[];
   onChange: (value: string[]) => void;
+  /** Fired as the user types in the combobox (for hybrid remote search). */
+  onSearchChange?: (query: string) => void;
   /**
    * Called when the user submits text that does not match an existing option.
    * Return the value to store (e.g. a new entity id), or null/undefined to ignore.
@@ -38,6 +40,7 @@ export function SearchableMultiSelect({
   data,
   value,
   onChange,
+  onSearchChange,
   onCreate,
   clearable = true,
   disabled,
@@ -113,6 +116,7 @@ export function SearchableMultiSelect({
         data={suggestionLabels}
         value={tagsValue}
         onChange={handleChange}
+        onSearchChange={onSearchChange}
         clearable={clearable}
         disabled={disabled}
         acceptValueOnBlur

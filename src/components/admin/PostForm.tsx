@@ -1,7 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { useContent } from '../../context/ContentContext';
+import { useTaxonomyPickerOptions } from '../../hooks/useTaxonomy';
+import { contentApi, mapCategory, mapTag } from '../../services/contentApi';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
@@ -23,6 +26,7 @@ interface PostFormProps {
 export function PostForm({ typeSlug, basePath, publicBasePath, noun }: PostFormProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { currentUser, can } = useAuth();
   const {
     getPost,
@@ -31,22 +35,18 @@ export function PostForm({ typeSlug, basePath, publicBasePath, noun }: PostFormP
     updatePost,
     deletePost,
     contentTypes,
-    getLocalizedCategories,
-    getLocalizedTags,
-    createCategory,
-    createTag,
     getMetadataForPost,
     setMetadataForPost,
     language,
   } = useContent();
 
+  const categoriesPicker = useTaxonomyPickerOptions('categories', language);
+  const tagsPicker = useTaxonomyPickerOptions('tags', language);
+
   const isNew = id === 'new';
   const existing = isNew ? undefined : getPost(id!);
   const localizedExisting = isNew ? undefined : (id ? getLocalizedPost(id) : undefined);
   const contentType = contentTypes.find((t) => t.slug === typeSlug);
-
-  const localizedCategories = getLocalizedCategories();
-  const localizedTags = getLocalizedTags();
 
   const canEditAll = can('content:edit_all');
   const canEditOwn = can('content:edit_own');
@@ -269,18 +269,23 @@ export function PostForm({ typeSlug, basePath, publicBasePath, noun }: PostFormP
             <h2 className="card-title">Categories</h2>
             <SearchableMultiSelect
               placeholder="Search or add category…"
-              data={localizedCategories.map((cat) => ({
+              data={categoriesPicker.items.map((cat) => ({
                 value: String(cat.id),
                 label: cat.name,
               }))}
               value={categoryIds.map(String)}
               onChange={(next) => setCategoryIds(next.map(Number))}
+              onSearchChange={categoriesPicker.onSearchChange}
               onCreate={async (name) => {
-                const created = await createCategory({
-                  languageCode: language,
-                  name,
-                  slug: slugify(name),
-                });
+                const created = mapCategory(
+                  await contentApi.createCategory({
+                    languageCode: language,
+                    name,
+                    slug: slugify(name),
+                    dbDescription: name,
+                  }),
+                );
+                void queryClient.invalidateQueries({ queryKey: ['taxonomy', 'categories'] });
                 return String(created.id);
               }}
             />
@@ -290,18 +295,23 @@ export function PostForm({ typeSlug, basePath, publicBasePath, noun }: PostFormP
             <h2 className="card-title">Tags</h2>
             <SearchableMultiSelect
               placeholder="Search or add tag…"
-              data={localizedTags.map((tag) => ({
+              data={tagsPicker.items.map((tag) => ({
                 value: String(tag.id),
                 label: tag.name,
               }))}
               value={tagIds.map(String)}
               onChange={(next) => setTagIds(next.map(Number))}
+              onSearchChange={tagsPicker.onSearchChange}
               onCreate={async (name) => {
-                const created = await createTag({
-                  languageCode: language,
-                  name,
-                  slug: slugify(name),
-                });
+                const created = mapTag(
+                  await contentApi.createTag({
+                    languageCode: language,
+                    name,
+                    slug: slugify(name),
+                    dbDescription: name,
+                  }),
+                );
+                void queryClient.invalidateQueries({ queryKey: ['taxonomy', 'tags'] });
                 return String(created.id);
               }}
             />

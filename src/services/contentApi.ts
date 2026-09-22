@@ -346,6 +346,36 @@ export const contentApi = {
     );
   },
 
+  searchCategories(q: string, lang?: string, limit = 20) {
+    return apiRequest<LocalizedTaxonomyDto[]>(
+      base(),
+      withQuery('/api/categories/search', { q, lang, limit }),
+      { auth: false },
+    );
+  },
+
+  listCategoriesByIds(ids: number[], lang?: string) {
+    if (ids.length === 0) return Promise.resolve([] as LocalizedTaxonomyDto[]);
+    return apiRequest<LocalizedTaxonomyDto[]>(
+      base(),
+      withQuery('/api/categories/by-ids', { ids: ids.join(','), lang }),
+      { auth: false },
+    );
+  },
+
+  listCategoriesAdmin(params?: { lang?: string; page?: number; size?: number; q?: string }) {
+    return apiRequest<PageResult<LocalizedTaxonomyDto>>(
+      base(),
+      withQuery('/api/categories/admin', {
+        lang: params?.lang,
+        page: params?.page ?? 0,
+        size: params?.size ?? 10,
+        q: params?.q,
+      }),
+      { auth: false },
+    );
+  },
+
   createCategory(body: {
     languageCode?: string;
     name: string;
@@ -373,6 +403,36 @@ export const contentApi = {
     return apiRequest<LocalizedTaxonomyDto[]>(base(), withQuery('/api/tags', { lang }), {
       auth: false,
     });
+  },
+
+  searchTags(q: string, lang?: string, limit = 20) {
+    return apiRequest<LocalizedTaxonomyDto[]>(
+      base(),
+      withQuery('/api/tags/search', { q, lang, limit }),
+      { auth: false },
+    );
+  },
+
+  listTagsByIds(ids: number[], lang?: string) {
+    if (ids.length === 0) return Promise.resolve([] as LocalizedTaxonomyDto[]);
+    return apiRequest<LocalizedTaxonomyDto[]>(
+      base(),
+      withQuery('/api/tags/by-ids', { ids: ids.join(','), lang }),
+      { auth: false },
+    );
+  },
+
+  listTagsAdmin(params?: { lang?: string; page?: number; size?: number; q?: string }) {
+    return apiRequest<PageResult<LocalizedTaxonomyDto>>(
+      base(),
+      withQuery('/api/tags/admin', {
+        lang: params?.lang,
+        page: params?.page ?? 0,
+        size: params?.size ?? 10,
+        q: params?.q,
+      }),
+      { auth: false },
+    );
   },
 
   createTag(body: {

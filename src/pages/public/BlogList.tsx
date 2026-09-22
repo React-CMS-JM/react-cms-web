@@ -1,19 +1,26 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { ListingPagination } from '../../components/public/ListingPagination';
 import { AccessBadge } from '../../components/ui/Badge';
 import { useContent } from '../../context/ContentContext';
 import { usePagedListing } from '../../hooks/usePagedListing';
+import { useTaxonomyLabels } from '../../hooks/useTaxonomy';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function BlogList() {
-  const { getLocalizedCategories, getLocalizedTags } = useContent();
+  const { language } = useContent();
   const { items: posts, page, setPage, totalPages, loading } = usePagedListing('post');
   const t = useUiString();
 
-  const localizedCategories = getLocalizedCategories();
-  const localizedTags = getLocalizedTags();
+  const categoryIds = useMemo(
+    () => posts.flatMap((post) => post.categoryIds),
+    [posts],
+  );
+  const tagIds = useMemo(() => posts.flatMap((post) => post.tagIds), [posts]);
+  const categoriesById = useTaxonomyLabels('categories', categoryIds, language);
+  const tagsById = useTaxonomyLabels('tags', tagIds, language);
 
   return (
     <PublicLayout>
@@ -45,7 +52,7 @@ export function BlogList() {
                     </time>
                     <div className="tag-list">
                       {post.categoryIds.map((cid) => {
-                        const category = localizedCategories.find((c) => c.id === cid);
+                        const category = categoriesById.get(cid);
                         return category ? (
                           <span key={cid} className="tag tag-category">
                             {category.name}
@@ -53,7 +60,7 @@ export function BlogList() {
                         ) : null;
                       })}
                       {post.tagIds.map((tid) => {
-                        const tag = localizedTags.find((t) => t.id === tid);
+                        const tag = tagsById.get(tid);
                         return tag ? (
                           <span key={tid} className="tag">
                             {tag.name}
