@@ -25,6 +25,8 @@ export type LocalizedCategory = Category & {
   languageCode: LanguageCode;
   name: string;
   slug: string;
+  /** Posts linked via posts_categories (from content-service). */
+  usageCount: number;
 };
 
 /** Non-translatable tag row (`tags` table). */
@@ -47,6 +49,8 @@ export type LocalizedTag = Tag & {
   languageCode: LanguageCode;
   name: string;
   slug: string;
+  /** Posts linked via posts_tags (from content-service). */
+  usageCount: number;
 };
 
 export type CategoryI18nInput = Omit<CategoryI18n, 'id'>;

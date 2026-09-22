@@ -8,13 +8,13 @@ interface TaxonomyItem {
   id: number;
   name: string;
   slug: string;
+  usageCount?: number;
 }
 
 interface TaxonomyManagerProps {
   title: string;
   description: string;
   items: TaxonomyItem[];
-  usageCount: (id: number) => number;
   onCreate: (input: { name: string; slug: string }) => unknown | Promise<unknown>;
   onUpdate: (id: number, input: { name: string; slug: string }) => unknown | Promise<unknown>;
   onDelete: (id: number) => unknown | Promise<unknown>;
@@ -24,7 +24,6 @@ export function TaxonomyManager({
   title,
   description,
   items,
-  usageCount,
   onCreate,
   onUpdate,
   onDelete,
@@ -94,7 +93,7 @@ export function TaxonomyManager({
                     {item.name}
                   </td>
                   <td className="text-muted">/{item.slug}</td>
-                  <td className="text-muted">{usageCount(item.id)} posts</td>
+                  <td className="text-muted">{item.usageCount ?? 0} items</td>
                   <td>
                     <button
                       type="button"

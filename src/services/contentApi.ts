@@ -79,6 +79,7 @@ export interface LocalizedTaxonomyDto {
   languageCode: string;
   name: string;
   slug: string;
+  usageCount?: number;
 }
 
 export interface CommentDto {
@@ -192,6 +193,7 @@ export function mapCategory(dto: LocalizedTaxonomyDto): LocalizedCategory {
     languageCode: (dto.languageCode as LanguageCode) || 'en',
     name: dto.name,
     slug: dto.slug,
+    usageCount: dto.usageCount ?? 0,
   };
 }
 
@@ -202,6 +204,7 @@ export function mapTag(dto: LocalizedTaxonomyDto): LocalizedTag {
     languageCode: (dto.languageCode as LanguageCode) || 'en',
     name: dto.name,
     slug: dto.slug,
+    usageCount: dto.usageCount ?? 0,
   };
 }
 

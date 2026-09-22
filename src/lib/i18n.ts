@@ -80,6 +80,7 @@ export function localizeCategory(
     languageCode: i18n.languageCode,
     name: i18n.name,
     slug: i18n.slug,
+    usageCount: 0,
   };
 }
 
@@ -98,5 +99,6 @@ export function localizeTag(
     languageCode: i18n.languageCode,
     name: i18n.name,
     slug: i18n.slug,
+    usageCount: 0,
   };
 }
