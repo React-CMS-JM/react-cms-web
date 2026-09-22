@@ -37,12 +37,26 @@ export function HomePage() {
     language,
     fetchPostsPage,
     fetchCoursesPage,
+    isInitialLoading,
   } = useContent();
   const t = useUiString();
   const homeHero = resolveHomeHero(settings.homeHero);
   const configuredSections = useMemo(
     () => resolveHomeSections(settings.homeSections),
     [settings.homeSections],
+  );
+
+  /**
+   * Stable signature of section config (id / visibility / limit).
+   * Avoids re-fetching when settings hydrate to a new array with the same values
+   * after ContentContext bootstrap.
+   */
+  const sectionsFetchKey = useMemo(
+    () =>
+      configuredSections
+        .map((s) => `${s.id}:${s.visible ? 1 : 0}:${resolveHomeSectionLimit(s, s.id)}`)
+        .join('|'),
+    [configuredSections],
   );
 
   const [services, setServices] = useState<LocalizedPost[]>([]);
@@ -55,6 +69,9 @@ export function HomePage() {
   );
 
   useEffect(() => {
+    // Wait for bootstrap so we use API settings (not DEFAULT_SETTINGS) for limits.
+    if (isInitialLoading) return;
+
     let cancelled = false;
 
     void (async () => {
@@ -87,7 +104,10 @@ export function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [configuredSections, language, fetchPostsPage, fetchCoursesPage]);
+    // configuredSections is read from the render that produced sectionsFetchKey;
+    // depending on the array identity would re-fetch after settings hydration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sectionsFetchKey encodes section config
+  }, [isInitialLoading, sectionsFetchKey, language, fetchPostsPage, fetchCoursesPage]);
 
   const sectionContent: Record<HomeSectionId, ReactNode> = {
     services:
