@@ -119,7 +119,7 @@ export function SearchableMultiSelect({
         onSearchChange={onSearchChange}
         clearable={clearable}
         disabled={disabled}
-        acceptValueOnBlur
+        acceptValueOnBlur={false}
         splitChars={[',']}
         renderPill={({ option, onRemove }) => (
           <Pill withRemoveButton={!disabled} onRemove={onRemove}>
