@@ -32,6 +32,22 @@ const EMPTY_DASHBOARD: AdminDashboardDto = {
 
 const EMPTY_USER_STATS: UserStatsDto = { total: 0, banned: 0 };
 
+function DashboardBodySkeleton({ statCount }: { statCount: number }) {
+  return (
+    <div className="dashboard-body-skeleton" aria-busy="true" aria-label="Loading dashboard">
+      <div className="stats-grid">
+        {Array.from({ length: statCount }, (_, i) => (
+          <div key={i} className="skeleton skeleton-stat-card" />
+        ))}
+      </div>
+      <section className="card">
+        <div className="skeleton skeleton-line short" style={{ marginBottom: 16 }} />
+        <div className="skeleton skeleton-table-block" />
+      </section>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const { language } = useLocale();
   const { currentUser, can, role } = useAuth();
@@ -75,6 +91,7 @@ export function Dashboard() {
   }, [language, canBanUsers]);
 
   const countOf = (slug: ContentTypeSlug) => dashboard.counts[slug] ?? 0;
+  const skeletonStatCount = 5 + (canModerateComments ? 1 : 0) + (canBanUsers ? 1 : 0);
 
   return (
     <div className="page">
@@ -102,60 +119,64 @@ export function Dashboard() {
         </div>
       </header>
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <p className="stat-label">Posts</p>
-          <p className="stat-value">{loading ? '—' : countOf('post')}</p>
-          <p className="stat-meta">All statuses</p>
-        </div>
-        <div className="stat-card">
-          <p className="stat-label">Services</p>
-          <p className="stat-value">{loading ? '—' : countOf('service')}</p>
-          <p className="stat-meta">All statuses</p>
-        </div>
-        <div className="stat-card">
-          <p className="stat-label">Products</p>
-          <p className="stat-value">{loading ? '—' : countOf('product')}</p>
-          <p className="stat-meta">All statuses</p>
-        </div>
-        <div className="stat-card">
-          <p className="stat-label">Pages</p>
-          <p className="stat-value">{loading ? '—' : countOf('page')}</p>
-          <p className="stat-meta">Static site pages</p>
-        </div>
-        <div className="stat-card">
-          <p className="stat-label">Courses</p>
-          <p className="stat-value">{loading ? '—' : courseTotal}</p>
-          <p className="stat-meta">Structured lesson content</p>
-        </div>
-        {canModerateComments && (
-          <div className="stat-card">
-            <p className="stat-label">Pending Comments</p>
-            <p className="stat-value">{loading ? '—' : dashboard.pendingComments}</p>
-            <Link to="/admin/comments" className="stat-meta">
-              Review queue →
-            </Link>
+      {loading ? (
+        <DashboardBodySkeleton statCount={skeletonStatCount} />
+      ) : (
+        <>
+          <div className="stats-grid">
+            <div className="stat-card">
+              <p className="stat-label">Posts</p>
+              <p className="stat-value">{countOf('post')}</p>
+              <p className="stat-meta">All statuses</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Services</p>
+              <p className="stat-value">{countOf('service')}</p>
+              <p className="stat-meta">All statuses</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Products</p>
+              <p className="stat-value">{countOf('product')}</p>
+              <p className="stat-meta">All statuses</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Pages</p>
+              <p className="stat-value">{countOf('page')}</p>
+              <p className="stat-meta">Static site pages</p>
+            </div>
+            <div className="stat-card">
+              <p className="stat-label">Courses</p>
+              <p className="stat-value">{courseTotal}</p>
+              <p className="stat-meta">Structured lesson content</p>
+            </div>
+            {canModerateComments && (
+              <div className="stat-card">
+                <p className="stat-label">Pending Comments</p>
+                <p className="stat-value">{dashboard.pendingComments}</p>
+                <Link to="/admin/comments" className="stat-meta">
+                  Review queue →
+                </Link>
+              </div>
+            )}
+            {canBanUsers && (
+              <div className="stat-card">
+                <p className="stat-label">Users</p>
+                <p className="stat-value">{userStats.total}</p>
+                <p className="stat-meta">{userStats.banned} banned</p>
+              </div>
+            )}
           </div>
-        )}
-        {canBanUsers && (
-          <div className="stat-card">
-            <p className="stat-label">Users</p>
-            <p className="stat-value">{loading ? '—' : userStats.total}</p>
-            <p className="stat-meta">{userStats.banned} banned</p>
-          </div>
-        )}
-      </div>
 
-      <section className="card">
-        <h2 className="card-title">Recent Activity</h2>
-        {loading ? (
-          <p className="empty-state">Loading recent activity…</p>
-        ) : dashboard.recent.length === 0 ? (
-          <p className="empty-state">No content yet. Create your first item.</p>
-        ) : (
-          <RecentActivityTable items={dashboard.recent} />
-        )}
-      </section>
+          <section className="card">
+            <h2 className="card-title">Recent Activity</h2>
+            {dashboard.recent.length === 0 ? (
+              <p className="empty-state">No content yet. Create your first item.</p>
+            ) : (
+              <RecentActivityTable items={dashboard.recent} />
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

@@ -814,6 +814,9 @@ img.public-brand-logo {
 .skeleton-line { height: 16px; }
 .skeleton-line.short { width: 60%; }
 .skeleton-card { height: 140px; border-radius: var(--radius-lg); }
+.skeleton-stat-card { height: 110px; border-radius: var(--radius-lg); }
+.skeleton-table-block { height: 220px; border-radius: var(--radius); }
+.dashboard-body-skeleton { display: flex; flex-direction: column; gap: 0; }
 .skeleton-footer { width: 280px; height: 14px; margin: 0 auto; }
 .skeleton-action { width: 60px; height: 28px; border-radius: 999px; }
 .skeleton-user { width: 120px; height: 38px; border-radius: 999px; }
