@@ -3,8 +3,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { contentApi, mapCategory, mapTag } from '../services/contentApi';
 import type { LocalizedCategory, LocalizedTag } from '../types/taxonomy';
 import {
+  clearEmptyTaxonomySearches,
+  isKnownEmptyTaxonomySearch,
   isTaxonomySearchEligible,
   normalizeTaxonomySearchKey,
+  rememberEmptyTaxonomySearch,
   taxonomyKeys,
 } from '../lib/queryClient';
 
@@ -27,6 +30,7 @@ function usePopularTaxonomy(kind: Kind, lang: string) {
  * Hybrid autocomplete data:
  * - React Query cache of top-100 popular items
  * - After 300ms with no local matches, call search API (once per query)
+ * - If a query returned 0 rows, skip later queries that contain that needle
  * - Search hits are merged into the in-memory option list
  */
 export function useTaxonomyPickerOptions(kind: Kind, lang: string) {
@@ -56,9 +60,11 @@ export function useTaxonomyPickerOptions(kind: Kind, lang: string) {
     if (hasLocal) return;
 
     const key = normalizeTaxonomySearchKey(q);
+    if (isKnownEmptyTaxonomySearch(kind, lang, q)) return;
     if (searchedRef.current.has(key)) return;
 
     const timer = window.setTimeout(() => {
+      if (isKnownEmptyTaxonomySearch(kind, lang, q)) return;
       if (searchedRef.current.has(key)) return;
       searchedRef.current.add(key);
       void (async () => {
@@ -66,8 +72,11 @@ export function useTaxonomyPickerOptions(kind: Kind, lang: string) {
           kind === 'categories'
             ? await contentApi.searchCategories(q, lang, 20)
             : await contentApi.searchTags(q, lang, 20);
-        const mapped =
-          kind === 'categories' ? rows.map(mapCategory) : rows.map(mapTag);
+        if (rows.length === 0) {
+          rememberEmptyTaxonomySearch(kind, lang, q);
+          return;
+        }
+        const mapped = kind === 'categories' ? rows.map(mapCategory) : rows.map(mapTag);
         setExtra((prev) => {
           const byId = new Map(prev.map((item) => [item.id, item]));
           for (const item of mapped) byId.set(item.id, item);
@@ -99,10 +108,12 @@ export function useTaxonomyPickerOptions(kind: Kind, lang: string) {
   }, []);
 
   const invalidate = useCallback(() => {
+    clearEmptyTaxonomySearches(kind, lang);
+    searchedRef.current.clear();
     void queryClient.invalidateQueries({
       queryKey: kind === 'categories' ? ['taxonomy', 'categories'] : ['taxonomy', 'tags'],
     });
-  }, [kind, queryClient]);
+  }, [kind, lang, queryClient]);
 
   return {
     items: cachedItems,

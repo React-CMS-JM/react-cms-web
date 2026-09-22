@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useContent } from '../../context/ContentContext';
 import { useTaxonomyPickerOptions } from '../../hooks/useTaxonomy';
 import { contentApi, mapCategory, mapTag } from '../../services/contentApi';
+import { clearEmptyTaxonomySearches } from '../../lib/queryClient';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
@@ -286,6 +287,7 @@ export function PostForm({ typeSlug, basePath, publicBasePath, noun }: PostFormP
                   }),
                 );
                 void queryClient.invalidateQueries({ queryKey: ['taxonomy', 'categories'] });
+                clearEmptyTaxonomySearches('categories', language);
                 return String(created.id);
               }}
             />
@@ -312,6 +314,7 @@ export function PostForm({ typeSlug, basePath, publicBasePath, noun }: PostFormP
                   }),
                 );
                 void queryClient.invalidateQueries({ queryKey: ['taxonomy', 'tags'] });
+                clearEmptyTaxonomySearches('tags', language);
                 return String(created.id);
               }}
             />
