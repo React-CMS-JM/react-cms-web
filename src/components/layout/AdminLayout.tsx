@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useContent } from '../../context/ContentContext';
@@ -62,9 +63,14 @@ function AdminShellSkeleton() {
 
 export function AdminLayout() {
   const { bootstrapping } = useAuth();
-  const { isInitialLoading } = useContent();
+  const { loading, language, adminUiLanguage, loadAdminUiStrings } = useContent();
 
-  if (bootstrapping || isInitialLoading) {
+  useEffect(() => {
+    if (loading) return;
+    void loadAdminUiStrings();
+  }, [loading, loadAdminUiStrings]);
+
+  if (bootstrapping || loading || adminUiLanguage !== language) {
     return <AdminShellSkeleton />;
   }
 

@@ -62,6 +62,10 @@ interface ContentContextValue {
   isInitialLoading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
+  /** Language whose AdminSidebar strings are in cache; null until the admin shell loads them. */
+  adminUiLanguage: LanguageCode | null;
+  /** Fetches AdminSidebar UI strings. Call only from the admin shell. */
+  loadAdminUiStrings: () => Promise<void>;
 
   contentTypes: CMSData['contentTypes'];
   roles: CMSData['roles'];
@@ -274,6 +278,11 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   const rolesAdminLoadingRef = useRef<Promise<void> | null>(null);
   const [settings, setSettings] = useState<SiteSettings>(emptyData().settings);
   const [paramUiStringI18n, setParamUiStringI18n] = useState<ParamUiStringI18n[]>([]);
+  const [adminUiLanguage, setAdminUiLanguage] = useState<LanguageCode | null>(null);
+  const adminUiLoadedLangRef = useRef<string | null>(null);
+  const adminUiLoadingRef = useRef<Promise<void> | null>(null);
+  const languageRef = useRef(language);
+  languageRef.current = language;
   const typeCatalogLoadedRef = useRef(new Set<string>());
   const typeCatalogLoadingRef = useRef(new Map<string, Promise<void>>());
   const slugLoadingRef = useRef(new Map<string, Promise<LocalizedPost | undefined>>());
@@ -303,25 +312,24 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [types, settingsRes, rawPublicUiStrings, adminUiStrings] =
-        await Promise.all([
-          contentApi.listContentTypes(),
-          contentApi.getSettings(language),
-          // Default list excludes AdminSidebar on the content service (also filtered client-side).
-          contentApi.listUiStrings({ lang: language }),
-          // Always load admin chrome strings so /admin never flashes raw keys after auth resolves.
-          contentApi.listUiStrings({ lang: language, component: ADMIN_UI_COMPONENT }).catch(() => []),
-        ]);
+      adminUiLoadedLangRef.current = null;
+      setAdminUiLanguage(null);
+
+      const [types, settingsRes, rawPublicUiStrings] = await Promise.all([
+        contentApi.listContentTypes(),
+        contentApi.getSettings(language),
+        // Default list excludes AdminSidebar on the content service (also filtered client-side).
+        contentApi.listUiStrings({ lang: language }),
+      ]);
 
       const publicUiStrings = rawPublicUiStrings.filter(
         (row) => row.uiComponent !== ADMIN_UI_COMPONENT,
       );
-      const uiStringDtos = [...publicUiStrings, ...adminUiStrings];
 
       const mappedTypes = types.map(mapContentType);
       setContentTypes(mappedTypes);
       setSettings(mapSiteSettings(settingsRes));
-      setParamUiStringI18n(uiStringDtos.map(mapUiString));
+      setParamUiStringI18n(publicUiStrings.map(mapUiString));
       setComments([]);
       commentsFullyLoadedRef.current = false;
       commentsLoadingRef.current = null;
@@ -362,6 +370,44 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       setHasLoaded(true);
       setLoading(false);
     }
+  }, [language]);
+
+  const loadAdminUiStrings = useCallback(async () => {
+    if (adminUiLoadedLangRef.current === language) return;
+    if (adminUiLoadingRef.current) {
+      await adminUiLoadingRef.current;
+      if (adminUiLoadedLangRef.current === language) return;
+    }
+
+    const requested = language;
+    const load = (async () => {
+      try {
+        const rows = await contentApi.listUiStrings({
+          lang: requested,
+          component: ADMIN_UI_COMPONENT,
+        });
+        if (languageRef.current !== requested) return;
+        const mapped = rows.map(mapUiString);
+        setParamUiStringI18n((prev) => {
+          const incoming = new Set(mapped.map((row) => `${row.stringKey}:${row.languageCode}`));
+          return [
+            ...prev.filter((row) => !incoming.has(`${row.stringKey}:${row.languageCode}`)),
+            ...mapped,
+          ];
+        });
+      } catch {
+        // Sidebar falls back to the raw string key.
+      } finally {
+        if (languageRef.current === requested) {
+          adminUiLoadedLangRef.current = requested;
+          setAdminUiLanguage(requested);
+        }
+        adminUiLoadingRef.current = null;
+      }
+    })();
+
+    adminUiLoadingRef.current = load;
+    await load;
   }, [language]);
 
   useEffect(() => {
@@ -1171,6 +1217,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       isInitialLoading,
       error,
       refreshData,
+      adminUiLanguage,
+      loadAdminUiStrings,
       contentTypes,
       roles,
       permissions,
@@ -1227,6 +1275,8 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       isInitialLoading,
       error,
       refreshData,
+      adminUiLanguage,
+      loadAdminUiStrings,
       contentTypes,
       roles,
       permissions,
