@@ -19,6 +19,7 @@ import {
   saveAuthToken,
   saveAuthUserJson,
 } from '../lib/storage';
+import { clearUserSessionCache } from '../lib/queryClient';
 import type { PermissionName, Role, RoleName } from '../types/rbac';
 import type { User } from '../types/user';
 
@@ -156,6 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* token may already be invalid */
     } finally {
+      clearUserSessionCache();
       clearAuthStorage();
       persistSession(null, null);
     }

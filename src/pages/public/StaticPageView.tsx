@@ -1,31 +1,15 @@
-import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
-import { useContent } from '../../context/ContentContext';
+import { usePublishedBySlug } from '../../hooks/usePublicContent';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function StaticPageView() {
   const { slug } = useParams<{ slug: string }>();
-  const { getLocalizedPostBySlug, ensurePostBySlug } = useContent();
   const t = useUiString();
-  const page = slug ? getLocalizedPostBySlug(slug, 'page') : undefined;
-  const [resolving, setResolving] = useState(!!slug && !page);
-
-  useEffect(() => {
-    if (!slug || page) {
-      setResolving(false);
-      return;
-    }
-    let cancelled = false;
-    setResolving(true);
-    void ensurePostBySlug(slug, 'page').finally(() => {
-      if (!cancelled) setResolving(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, page, ensurePostBySlug]);
+  const query = usePublishedBySlug('page', slug);
+  const page = query.data?.post;
+  const resolving = Boolean(slug) && query.isPending;
 
   if (resolving) {
     return (

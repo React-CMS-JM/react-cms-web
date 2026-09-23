@@ -63,14 +63,20 @@ function AdminShellSkeleton() {
 
 export function AdminLayout() {
   const { bootstrapping } = useAuth();
-  const { loading, language, adminUiLanguage, loadAdminUiStrings } = useContent();
+  const { loading, hasLoaded, language, adminUiLanguage, loadAdminUiStrings, refreshData } =
+    useContent();
 
   useEffect(() => {
-    if (loading) return;
-    void loadAdminUiStrings();
-  }, [loading, loadAdminUiStrings]);
+    if (bootstrapping) return;
+    void refreshData();
+  }, [bootstrapping, refreshData]);
 
-  if (bootstrapping || loading || adminUiLanguage !== language) {
+  useEffect(() => {
+    if (bootstrapping || loading || !hasLoaded) return;
+    void loadAdminUiStrings();
+  }, [bootstrapping, loading, hasLoaded, loadAdminUiStrings]);
+
+  if (bootstrapping || !hasLoaded || loading || adminUiLanguage !== language) {
     return <AdminShellSkeleton />;
   }
 

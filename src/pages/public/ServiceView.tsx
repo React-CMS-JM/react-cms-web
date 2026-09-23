@@ -1,39 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
-import { useContent } from '../../context/ContentContext';
+import { usePublishedBySlug, useRecordPublicView } from '../../hooks/usePublicContent';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function ServiceView() {
   const { slug } = useParams<{ slug: string }>();
-  const { getLocalizedPostBySlug, ensurePostBySlug, incrementViewCount } = useContent();
   const t = useUiString();
-  const service = slug ? getLocalizedPostBySlug(slug, 'service') : undefined;
-  const counted = useRef(false);
-  const [resolving, setResolving] = useState(!!slug && !service);
-
-  useEffect(() => {
-    if (!slug || service) {
-      setResolving(false);
-      return;
-    }
-    let cancelled = false;
-    setResolving(true);
-    void ensurePostBySlug(slug, 'service').finally(() => {
-      if (!cancelled) setResolving(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, service, ensurePostBySlug]);
-
-  useEffect(() => {
-    if (service && service.status === 'published' && !counted.current) {
-      counted.current = true;
-      incrementViewCount(service.id);
-    }
-  }, [service, incrementViewCount]);
+  const query = usePublishedBySlug('service', slug);
+  const service = query.data?.post;
+  const resolving = Boolean(slug) && query.isPending;
+  useRecordPublicView('service', slug, service?.id, service?.status === 'published');
 
   if (resolving) {
     return (

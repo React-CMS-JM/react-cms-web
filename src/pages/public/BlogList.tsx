@@ -3,15 +3,13 @@ import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { ListingPagination } from '../../components/public/ListingPagination';
 import { AccessBadge } from '../../components/ui/Badge';
-import { useContent } from '../../context/ContentContext';
 import { usePagedListing } from '../../hooks/usePagedListing';
 import { useTaxonomyLabels } from '../../hooks/useTaxonomy';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function BlogList() {
-  const { language } = useContent();
-  const { items: posts, page, setPage, totalPages, loading } = usePagedListing('post');
+  const { items: posts, page, setPage, totalPages, loading, language } = usePagedListing('post');
   const t = useUiString();
 
   const categoryIds = useMemo(

@@ -1,40 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
-import { useContent } from '../../context/ContentContext';
+import { usePublishedBySlug, useRecordPublicView } from '../../hooks/usePublicContent';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function ProductView() {
   const { slug } = useParams<{ slug: string }>();
-  const { getLocalizedPostBySlug, ensurePostBySlug, incrementViewCount, getMetadataForPost } =
-    useContent();
   const t = useUiString();
-  const product = slug ? getLocalizedPostBySlug(slug, 'product') : undefined;
-  const counted = useRef(false);
-  const [resolving, setResolving] = useState(!!slug && !product);
-
-  useEffect(() => {
-    if (!slug || product) {
-      setResolving(false);
-      return;
-    }
-    let cancelled = false;
-    setResolving(true);
-    void ensurePostBySlug(slug, 'product').finally(() => {
-      if (!cancelled) setResolving(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, product, ensurePostBySlug]);
-
-  useEffect(() => {
-    if (product && product.status === 'published' && !counted.current) {
-      counted.current = true;
-      incrementViewCount(product.id);
-    }
-  }, [product, incrementViewCount]);
+  const query = usePublishedBySlug('product', slug);
+  const product = query.data?.post;
+  const resolving = Boolean(slug) && query.isPending;
+  useRecordPublicView('product', slug, product?.id, product?.status === 'published');
 
   if (resolving) {
     return (
@@ -56,9 +32,9 @@ export function ProductView() {
     );
   }
 
-  const meta = getMetadataForPost(product.id);
-  const websiteUrl = meta.find((m) => m.metaKey === 'website-url')?.metaValue;
-  const liveDemoUrl = meta.find((m) => m.metaKey === 'live-demo-url')?.metaValue;
+  const meta = query.data?.metadata ?? [];
+  const websiteUrl = meta.find((row) => row.metaKey === 'website-url')?.metaValue;
+  const liveDemoUrl = meta.find((row) => row.metaKey === 'live-demo-url')?.metaValue;
 
   return (
     <PublicLayout>

@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { AccessBadge } from '../../components/ui/Badge';
 import { Avatar } from '../../components/ui/Avatar';
 import { CommentsSection } from '../../components/content/CommentsSection';
 import { PremiumGate } from '../../components/content/PremiumGate';
-import { useContent } from '../../context/ContentContext';
+import { useLocale } from '../../context/LocaleContext';
+import { usePublishedBySlug, useRecordPublicView } from '../../hooks/usePublicContent';
 import { useUsersByIds, userSummaryDisplayName } from '../../hooks/useUsersByIds';
 import { useTaxonomyLabels } from '../../hooks/useTaxonomy';
 import { useUiString } from '../../hooks/useUiString';
@@ -30,42 +31,17 @@ function summaryAsUser(summary: UserSummaryDto): User {
 
 export function BlogPostView() {
   const { slug } = useParams<{ slug: string }>();
-  const {
-    getLocalizedPostBySlug,
-    ensurePostBySlug,
-    incrementViewCount,
-    language,
-  } = useContent();
+  const { language } = useLocale();
   const t = useUiString();
-  const post = slug ? getLocalizedPostBySlug(slug, 'post') : undefined;
-  const counted = useRef(false);
-  const [resolving, setResolving] = useState(!!slug && !post);
+  const query = usePublishedBySlug('post', slug);
+  const post = query.data?.post;
+  const resolving = Boolean(slug) && query.isPending;
+  useRecordPublicView('post', slug, post?.id, post?.status === 'published');
+
   const authorIds = useMemo(() => (post ? [post.authorId] : []), [post]);
   const authorsById = useUsersByIds(authorIds);
   const categoriesById = useTaxonomyLabels('categories', post?.categoryIds ?? [], language);
   const tagsById = useTaxonomyLabels('tags', post?.tagIds ?? [], language);
-
-  useEffect(() => {
-    if (!slug || post) {
-      setResolving(false);
-      return;
-    }
-    let cancelled = false;
-    setResolving(true);
-    void ensurePostBySlug(slug, 'post').finally(() => {
-      if (!cancelled) setResolving(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, post, ensurePostBySlug]);
-
-  useEffect(() => {
-    if (post && post.status === 'published' && !counted.current) {
-      counted.current = true;
-      incrementViewCount(post.id);
-    }
-  }, [post, incrementViewCount]);
 
   if (resolving) {
     return (

@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { useContent } from '../../context/ContentContext';
+import { usePublicShell } from '../../hooks/usePublicContent';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 import {
   DEFAULT_MAIN_MENU,
+  DEFAULT_SETTINGS,
   type MainMenuItemId,
   type VisibilityOrderItem,
 } from '../../types/settings';
@@ -22,12 +23,12 @@ function resolveMainMenu(
 }
 
 export function PublicLayout({ children }: { children: ReactNode }) {
-  const { settings, getLocalizedPostsByType, isInitialLoading } = useContent();
+  const { settings, pages, isLoading } = usePublicShell();
   const { canAny } = useAuth();
   const t = useUiString();
-
-  const pages = getLocalizedPostsByType('page').filter((p) => p.status === 'published');
-  const pagesById = Object.fromEntries(pages.map((p) => [p.id, p]));
+  const siteSettings = settings.data ?? DEFAULT_SETTINGS;
+  const navPages = (pages.data?.items ?? []).filter((page) => page.status === 'published');
+  const pagesById = Object.fromEntries(navPages.map((page) => [page.id, page]));
 
   const canOpenAdmin = canAny([
     'content:create',
@@ -51,7 +52,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
 
   const menuItems: { key: string; to: string; label: string; end?: boolean }[] = [];
 
-  for (const item of resolveMainMenu(settings.mainMenu)) {
+  for (const item of resolveMainMenu(siteSettings.mainMenu)) {
     if (!item.visible) continue;
 
     if (item.id === 'page-about' || item.id === 'page-contact') {
@@ -74,7 +75,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
     <div className="public-site">
       <header className="public-header">
         <div className="public-header-inner">
-          {isInitialLoading ? (
+          {isLoading ? (
             <>
               <div className="skeleton skeleton-brand" aria-hidden="true" />
               <nav className="public-nav" aria-hidden="true">
@@ -87,11 +88,11 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             <>
               <Link to="/" className="public-brand">
                 <SiteBrandMark
-                  iconUrl={settings.siteIconUrl}
+                  iconUrl={siteSettings.siteIconUrl}
                   className="public-brand-logo"
-                  alt={settings.siteName}
+                  alt={siteSettings.siteName}
                 />
-                {settings.siteName}
+                {siteSettings.siteName}
               </Link>
               <nav className="public-nav">
                 {menuItems.map((item) => (
@@ -103,7 +104,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             </>
           )}
           <div className="public-header-actions">
-            {isInitialLoading ? (
+            {isLoading ? (
               <>
                 <div className="skeleton skeleton-action" aria-hidden="true" />
                 <div className="skeleton skeleton-user" aria-hidden="true" />
@@ -124,7 +125,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       </header>
 
       <main className="public-main">
-        {isInitialLoading ? (
+        {isLoading ? (
           <div className="public-skeleton" aria-busy="true" aria-label="Loading content">
             <div className="skeleton skeleton-hero" />
             <div className="skeleton skeleton-line" />
@@ -141,11 +142,11 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       </main>
 
       <footer className="public-footer">
-        {isInitialLoading ? (
+        {isLoading ? (
           <div className="skeleton skeleton-footer" aria-hidden="true" />
         ) : (
           <p>
-            © {new Date().getFullYear()} {settings.siteName} — {settings.siteDescription}
+            © {new Date().getFullYear()} {siteSettings.siteName} — {siteSettings.siteDescription}
           </p>
         )}
       </footer>

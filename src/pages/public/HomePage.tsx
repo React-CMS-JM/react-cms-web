@@ -1,16 +1,17 @@
 import { Link } from 'react-router-dom';
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, type ReactNode } from 'react';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { HeroCtaLink } from '../../components/public/HeroCtaLink';
 import { AccessBadge } from '../../components/ui/Badge';
-import { useContent } from '../../context/ContentContext';
+import { useLocale } from '../../context/LocaleContext';
+import { useHomeSectionFeeds, useNavPages, useSiteSettings } from '../../hooks/usePublicContent';
 import { useUiString } from '../../hooks/useUiString';
-import type { LocalizedPost } from '../../types/content';
+import type { PostMetadata } from '../../types/content';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 import {
   DEFAULT_HOME_SECTIONS,
+  DEFAULT_SETTINGS,
   resolveHomeHero,
-  resolveHomeSectionLimit,
   type HomeSectionId,
   type VisibilityOrderItem,
 } from '../../types/settings';
@@ -23,91 +24,32 @@ function resolveHomeSections(
   return configured.filter((item) => known.has(item.id));
 }
 
-const SECTION_TYPE: Record<Exclude<HomeSectionId, 'courses'>, 'post' | 'product' | 'service'> = {
-  blog: 'post',
-  products: 'product',
-  services: 'service',
-};
+function metaValue(metadata: PostMetadata[], postId: string, key: string): string | undefined {
+  return metadata.find((row) => row.postId === postId && row.metaKey === key)?.metaValue;
+}
 
 export function HomePage() {
-  const {
-    settings,
-    getLocalizedPostsByType,
-    getMetadataForPost,
-    language,
-    fetchPostsPage,
-    fetchCoursesPage,
-    isInitialLoading,
-  } = useContent();
+  const { language } = useLocale();
+  const settingsQuery = useSiteSettings();
+  const settings = settingsQuery.data ?? DEFAULT_SETTINGS;
+  const navPages = useNavPages();
   const t = useUiString();
   const homeHero = resolveHomeHero(settings.homeHero);
   const configuredSections = useMemo(
     () => resolveHomeSections(settings.homeSections),
     [settings.homeSections],
   );
+  const feeds = useHomeSectionFeeds(configuredSections, settingsQuery.isSuccess);
 
-  /**
-   * Stable signature of section config (id / visibility / limit).
-   * Avoids re-fetching when settings hydrate to a new array with the same values
-   * after ContentContext bootstrap.
-   */
-  const sectionsFetchKey = useMemo(
-    () =>
-      configuredSections
-        .map((s) => `${s.id}:${s.visible ? 1 : 0}:${resolveHomeSectionLimit(s, s.id)}`)
-        .join('|'),
-    [configuredSections],
+  const services = feeds.services?.items ?? [];
+  const products = feeds.products?.items ?? [];
+  const latestPosts = feeds.blog?.items ?? [];
+  const featuredCourses = feeds.courses?.items ?? [];
+  const productMetadata = feeds.products?.metadata ?? [];
+
+  const welcomePage = (navPages.data?.items ?? []).find(
+    (page) => page.id === 'page-home' && page.status === 'published',
   );
-
-  const [services, setServices] = useState<LocalizedPost[]>([]);
-  const [products, setProducts] = useState<LocalizedPost[]>([]);
-  const [latestPosts, setLatestPosts] = useState<LocalizedPost[]>([]);
-  const [featuredCourses, setFeaturedCourses] = useState<LocalizedPost[]>([]);
-
-  const welcomePage = getLocalizedPostsByType('page').find(
-    (p) => p.id === 'page-home' && p.status === 'published',
-  );
-
-  useEffect(() => {
-    // Wait for bootstrap so we use API settings (not DEFAULT_SETTINGS) for limits.
-    if (isInitialLoading) return;
-
-    let cancelled = false;
-
-    void (async () => {
-      const visible = configuredSections.filter((s) => s.visible);
-      await Promise.all(
-        visible.map(async (section) => {
-          const limit = resolveHomeSectionLimit(section, section.id);
-          try {
-            if (section.id === 'courses') {
-              const result = await fetchCoursesPage(0, limit, 'published');
-              if (!cancelled) setFeaturedCourses(result.items);
-              return;
-            }
-            const result = await fetchPostsPage(SECTION_TYPE[section.id], 0, limit, 'published');
-            if (cancelled) return;
-            if (section.id === 'services') setServices(result.items);
-            else if (section.id === 'products') setProducts(result.items);
-            else setLatestPosts(result.items);
-          } catch {
-            if (cancelled) return;
-            if (section.id === 'courses') setFeaturedCourses([]);
-            else if (section.id === 'services') setServices([]);
-            else if (section.id === 'products') setProducts([]);
-            else setLatestPosts([]);
-          }
-        }),
-      );
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // configuredSections is read from the render that produced sectionsFetchKey;
-    // depending on the array identity would re-fetch after settings hydration.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sectionsFetchKey encodes section config
-  }, [isInitialLoading, sectionsFetchKey, language, fetchPostsPage, fetchCoursesPage]);
 
   const sectionContent: Record<HomeSectionId, ReactNode> = {
     services:
@@ -144,9 +86,8 @@ export function HomePage() {
           </div>
           <div className="posts-grid">
             {products.map((product) => {
-              const meta = getMetadataForPost(product.id);
-              const websiteUrl = meta.find((m) => m.metaKey === 'website-url')?.metaValue;
-              const liveDemoUrl = meta.find((m) => m.metaKey === 'live-demo-url')?.metaValue;
+              const websiteUrl = metaValue(productMetadata, product.id, 'website-url');
+              const liveDemoUrl = metaValue(productMetadata, product.id, 'live-demo-url');
 
               return (
                 <article key={product.id} className="post-card">

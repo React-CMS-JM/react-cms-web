@@ -1,67 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { AccessBadge } from '../../components/ui/Badge';
 import { CommentsSection } from '../../components/content/CommentsSection';
 import { IconLock } from '../../components/ui/Icons';
 import { useAuth } from '../../context/AuthContext';
-import { useContent } from '../../context/ContentContext';
+import { useCourseLessons, usePublishedBySlug, useRecordPublicView } from '../../hooks/usePublicContent';
 import { useUiString } from '../../hooks/useUiString';
 import type { LocalizedCourseLesson } from '../../types/content';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function CourseView() {
   const { slug } = useParams<{ slug: string }>();
-  const {
-    getLocalizedPostBySlug,
-    ensurePostBySlug,
-    getLocalizedLessonsByCourse,
-    ensureLessonsLoaded,
-    incrementViewCount,
-  } = useContent();
   const { can } = useAuth();
   const t = useUiString();
-  const course = slug ? getLocalizedPostBySlug(slug, 'course') : undefined;
-  const counted = useRef(false);
-  const [lessonsReady, setLessonsReady] = useState(false);
-  const [resolving, setResolving] = useState(!!slug && !course);
-
-  useEffect(() => {
-    if (!slug || course) {
-      setResolving(false);
-      return;
-    }
-    let cancelled = false;
-    setResolving(true);
-    void ensurePostBySlug(slug, 'course').finally(() => {
-      if (!cancelled) setResolving(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, course, ensurePostBySlug]);
-
-  useEffect(() => {
-    if (course && course.status === 'published' && !counted.current) {
-      counted.current = true;
-      incrementViewCount(course.id);
-    }
-  }, [course, incrementViewCount]);
-
-  useEffect(() => {
-    if (!course || course.status !== 'published') {
-      setLessonsReady(false);
-      return;
-    }
-    let cancelled = false;
-    setLessonsReady(false);
-    void ensureLessonsLoaded(course.id).then(() => {
-      if (!cancelled) setLessonsReady(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [course, ensureLessonsLoaded]);
+  const query = usePublishedBySlug('course', slug);
+  const course = query.data?.post;
+  const resolving = Boolean(slug) && query.isPending;
+  useRecordPublicView('course', slug, course?.id, course?.status === 'published');
+  const lessonsQuery = useCourseLessons(course?.id, course?.status === 'published');
+  const lessons = lessonsQuery.data ?? [];
 
   if (resolving) {
     return (
@@ -83,9 +40,8 @@ export function CourseView() {
     );
   }
 
-  const lessons = getLocalizedLessonsByCourse(course.id);
-  const topLevel = lessons.filter((l) => !l.parentLessonId);
-  const childrenOf = (id: string) => lessons.filter((l) => l.parentLessonId === id);
+  const topLevel = lessons.filter((lesson) => !lesson.parentLessonId);
+  const childrenOf = (id: string) => lessons.filter((lesson) => lesson.parentLessonId === id);
   const isLocked = (lesson: LocalizedCourseLesson) =>
     (course.accessLevel === 'premium' || lesson.accessLevel === 'premium') &&
     !can('content:read_premium');
@@ -118,7 +74,7 @@ export function CourseView() {
 
         <section className="lesson-list">
           <h2>Course Content</h2>
-          {!lessonsReady ? (
+          {lessonsQuery.isPending ? (
             <p className="empty-state">Loading lessons…</p>
           ) : topLevel.length === 0 ? (
             <p className="empty-state">Lessons coming soon.</p>

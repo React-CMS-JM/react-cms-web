@@ -10,6 +10,7 @@ import {
   rememberEmptyTaxonomySearch,
   taxonomyKeys,
 } from '../lib/queryClient';
+import { STALE } from '../lib/publicQueries';
 
 type Kind = 'categories' | 'tags';
 
@@ -23,6 +24,7 @@ function usePopularTaxonomy(kind: Kind, lang: string) {
       }
       return (await contentApi.listTags(lang)).map(mapTag);
     },
+    staleTime: STALE.taxonomyPopular,
   });
 }
 
@@ -159,6 +161,7 @@ export function useTaxonomyLabels(kind: Kind, ids: number[], lang: string) {
       return (await contentApi.listTagsByIds(missingIds, lang)).map(mapTag);
     },
     enabled: missingIds.length > 0,
+    staleTime: STALE.taxonomyPopular,
   });
 
   return useMemo(() => {

@@ -1,59 +1,20 @@
-import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { PremiumGate } from '../../components/content/PremiumGate';
-import { useContent } from '../../context/ContentContext';
+import { useCourseLessons, usePublishedBySlug } from '../../hooks/usePublicContent';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function LessonView() {
   const { slug, lessonSlug } = useParams<{ slug: string; lessonSlug: string }>();
-  const {
-    getLocalizedPostBySlug,
-    ensurePostBySlug,
-    getLocalizedLessonBySlug,
-    getLocalizedLessonsByCourse,
-    ensureLessonsLoaded,
-  } = useContent();
   const t = useUiString();
-  const course = slug ? getLocalizedPostBySlug(slug, 'course') : undefined;
-  const [lessonsReady, setLessonsReady] = useState(false);
-  const [resolving, setResolving] = useState(!!slug && !course);
-
-  useEffect(() => {
-    if (!slug || course) {
-      setResolving(false);
-      return;
-    }
-    let cancelled = false;
-    setResolving(true);
-    void ensurePostBySlug(slug, 'course').finally(() => {
-      if (!cancelled) setResolving(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, course, ensurePostBySlug]);
-
-  useEffect(() => {
-    if (!course || course.status !== 'published') {
-      setLessonsReady(false);
-      return;
-    }
-    let cancelled = false;
-    setLessonsReady(false);
-    void ensureLessonsLoaded(course.id).then(() => {
-      if (!cancelled) setLessonsReady(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [course, ensureLessonsLoaded]);
-
+  const courseQuery = usePublishedBySlug('course', slug);
+  const course = courseQuery.data?.post;
+  const resolving = Boolean(slug) && courseQuery.isPending;
+  const lessonsQuery = useCourseLessons(course?.id, course?.status === 'published');
+  const lessons = lessonsQuery.data ?? [];
   const lesson =
-    course && lessonSlug && lessonsReady
-      ? getLocalizedLessonBySlug(course.id, lessonSlug)
-      : undefined;
+    course && lessonSlug ? lessons.find((row) => row.slug === lessonSlug) : undefined;
 
   if (resolving) {
     return (
@@ -75,7 +36,7 @@ export function LessonView() {
     );
   }
 
-  if (!lessonsReady) {
+  if (lessonsQuery.isPending) {
     return (
       <PublicLayout>
         <p className="empty-state">Loading lesson…</p>
@@ -95,13 +56,14 @@ export function LessonView() {
     );
   }
 
-  const allLessons = getLocalizedLessonsByCourse(course.id);
-  const lessons = allLessons.filter((l) => !l.parentLessonId);
-  const flatOrder = lessons.flatMap((l) => [l, ...allLessons.filter((c) => c.parentLessonId === l.id)]);
-  const index = flatOrder.findIndex((l) => l.id === lesson.id);
+  const topLevel = lessons.filter((row) => !row.parentLessonId);
+  const flatOrder = topLevel.flatMap((row) => [
+    row,
+    ...lessons.filter((child) => child.parentLessonId === row.id),
+  ]);
+  const index = flatOrder.findIndex((row) => row.id === lesson.id);
   const prev = index > 0 ? flatOrder[index - 1] : undefined;
   const next = index >= 0 && index < flatOrder.length - 1 ? flatOrder[index + 1] : undefined;
-
   const locked = course.accessLevel === 'premium' || lesson.accessLevel === 'premium';
 
   return (

@@ -86,6 +86,15 @@ export function rememberEmptyTaxonomySearch(
 }
 
 /** Clear after create/update/delete so new items can match previously empty needles. */
+/** User-scoped caches. Public content (settings, lists, taxonomy) stays. */
+const USER_SESSION_QUERY_ROOTS = ['users', 'comments', 'comment', 'auth'] as const;
+
+export function clearUserSessionCache(client: QueryClient = queryClient): void {
+  for (const root of USER_SESSION_QUERY_ROOTS) {
+    client.removeQueries({ queryKey: [root] });
+  }
+}
+
 export function clearEmptyTaxonomySearches(kind: TaxonomyKind, lang?: string): void {
   if (lang) {
     emptyNeedlesByScope.delete(emptyScopeKey(kind, lang));

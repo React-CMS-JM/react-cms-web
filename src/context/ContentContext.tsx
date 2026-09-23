@@ -17,7 +17,6 @@ import {
 import {
   contentApi,
   mapComment,
-  mapContentType,
   mapLocalizedPost,
   mapMetadata,
   mapSiteSettings,
@@ -52,13 +51,37 @@ import type { ParamUiStringI18n } from '../types/paramUi';
 import type { Permission, Role } from '../types/rbac';
 import { useAuth } from './AuthContext';
 import { useLocale } from './LocaleContext';
+import { queryClient } from '../lib/queryClient';
+import {
+  STALE,
+  fetchContentTypes,
+  fetchPublicUiStrings,
+  fetchSettings,
+  publicKeys,
+} from '../lib/publicQueries';
 
 const ADMIN_UI_COMPONENT = 'AdminSidebar';
+
+function mergeUiStringRows(
+  current: ParamUiStringI18n[] | undefined,
+  rows: ParamUiStringI18n[],
+): ParamUiStringI18n[] {
+  const next = [...(current ?? [])];
+  for (const row of rows) {
+    const index = next.findIndex(
+      (item) => item.stringKey === row.stringKey && item.languageCode === row.languageCode,
+    );
+    if (index === -1) next.push(row);
+    else next[index] = row;
+  }
+  return next;
+}
 
 interface ContentContextValue {
   data: CMSData;
   language: LanguageCode;
   loading: boolean;
+  hasLoaded: boolean;
   isInitialLoading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
@@ -255,8 +278,8 @@ function upsertLocalizedPost(list: LocalizedPost[], next: LocalizedPost): Locali
 
 export function ContentProvider({ children }: { children: ReactNode }) {
   const { language } = useLocale();
-  const { token, bootstrapping } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const { token } = useAuth();
+  const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const isInitialLoading = loading && !hasLoaded;
   const [error, setError] = useState<string | null>(null);
@@ -315,21 +338,27 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       adminUiLoadedLangRef.current = null;
       setAdminUiLanguage(null);
 
-      const [types, settingsRes, rawPublicUiStrings] = await Promise.all([
-        contentApi.listContentTypes(),
-        contentApi.getSettings(language),
-        // Default list excludes AdminSidebar on the content service (also filtered client-side).
-        contentApi.listUiStrings({ lang: language }),
+      const [types, settingsRes, publicUiStrings] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: publicKeys.contentTypes(),
+          queryFn: fetchContentTypes,
+          staleTime: STALE.contentTypes,
+        }),
+        queryClient.fetchQuery({
+          queryKey: publicKeys.settings(language),
+          queryFn: () => fetchSettings(language),
+          staleTime: STALE.settings,
+        }),
+        queryClient.fetchQuery({
+          queryKey: publicKeys.uiStrings(language),
+          queryFn: () => fetchPublicUiStrings(language),
+          staleTime: STALE.uiStrings,
+        }),
       ]);
 
-      const publicUiStrings = rawPublicUiStrings.filter(
-        (row) => row.uiComponent !== ADMIN_UI_COMPONENT,
-      );
-
-      const mappedTypes = types.map(mapContentType);
-      setContentTypes(mappedTypes);
-      setSettings(mapSiteSettings(settingsRes));
-      setParamUiStringI18n(publicUiStrings.map(mapUiString));
+      setContentTypes(types);
+      setSettings(settingsRes);
+      setParamUiStringI18n(publicUiStrings);
       setComments([]);
       commentsFullyLoadedRef.current = false;
       commentsLoadingRef.current = null;
@@ -411,12 +440,6 @@ export function ContentProvider({ children }: { children: ReactNode }) {
   }, [language]);
 
   useEffect(() => {
-    // Wait for auth bootstrap so session is settled before the first shell fetch.
-    if (bootstrapping) return;
-    void refreshData();
-  }, [refreshData, bootstrapping]);
-
-  useEffect(() => {
     // Drop cached users/roles when the session changes; admin pages reload on next visit.
     usersAdminLoadingRef.current = null;
     rolesAdminLoadingRef.current = null;
@@ -424,6 +447,11 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       setUsers([]);
       setRoles([]);
       setPermissions([]);
+      setComments([]);
+      commentsFullyLoadedRef.current = false;
+      commentsLoadingRef.current = null;
+      commentsLoadedByPostRef.current.clear();
+      commentsLoadingByPostRef.current.clear();
     }
   }, [token]);
 
@@ -1163,6 +1191,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     ) => {
       const saved = mapSiteSettings(await contentApi.updateSettings(nextSettings, language));
       setSettings(saved);
+      queryClient.setQueryData(publicKeys.settings(language), saved);
       if (uiStringUpdates?.length) {
         const patched = await contentApi.patchUiStrings(uiStringUpdates);
         setParamUiStringI18n((prev) => {
@@ -1174,6 +1203,9 @@ export function ContentProvider({ children }: { children: ReactNode }) {
             if (index === -1) next.push(row);
             else next[index] = { ...row, id: next[index].id };
           }
+          queryClient.setQueryData<ParamUiStringI18n[]>(publicKeys.uiStrings(language), (current) =>
+            mergeUiStringRows(current, patched.map(mapUiString)),
+          );
           return next;
         });
       }
@@ -1189,6 +1221,9 @@ export function ContentProvider({ children }: { children: ReactNode }) {
     ): Promise<ParamUiStringI18n | undefined> => {
       const patched = await contentApi.patchUiStrings([{ stringKey, languageCode, stringValue }]);
       const mapped = patched.map(mapUiString);
+      queryClient.setQueryData<ParamUiStringI18n[]>(publicKeys.uiStrings(languageCode), (current) =>
+        mergeUiStringRows(current, mapped),
+      );
       setParamUiStringI18n((prev) => {
         const next = [...prev];
         for (const row of mapped) {
@@ -1214,6 +1249,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       data,
       language,
       loading,
+      hasLoaded,
       isInitialLoading,
       error,
       refreshData,
@@ -1272,6 +1308,7 @@ export function ContentProvider({ children }: { children: ReactNode }) {
       data,
       language,
       loading,
+      hasLoaded,
       isInitialLoading,
       error,
       refreshData,

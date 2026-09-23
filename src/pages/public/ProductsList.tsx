@@ -1,14 +1,12 @@
 import { Link } from 'react-router-dom';
 import { PublicLayout } from '../../components/layout/PublicLayout';
 import { ListingPagination } from '../../components/public/ListingPagination';
-import { useContent } from '../../context/ContentContext';
 import { usePagedListing } from '../../hooks/usePagedListing';
 import { useUiString } from '../../hooks/useUiString';
 import { UI_STRING_KEYS } from '../../types/paramUi';
 
 export function ProductsList() {
-  const { getMetadataForPost } = useContent();
-  const { items: products, page, setPage, totalPages, loading } = usePagedListing('product');
+  const { items: products, metadata, page, setPage, totalPages, loading } = usePagedListing('product');
   const t = useUiString();
 
   return (
@@ -27,7 +25,7 @@ export function ProductsList() {
           <>
             <div className="posts-grid">
               {products.map((product) => {
-                const meta = getMetadataForPost(product.id);
+                const meta = metadata.filter((row) => row.postId === product.id);
                 const websiteUrl = meta.find((m) => m.metaKey === 'website-url')?.metaValue;
                 const liveDemoUrl = meta.find((m) => m.metaKey === 'live-demo-url')?.metaValue;
 

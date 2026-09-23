@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
-import { useContent } from '../../context/ContentContext';
+import { useSiteSettings } from '../../hooks/usePublicContent';
+import { DEFAULT_SETTINGS } from '../../types/settings';
 
 /** Keeps document head SEO + favicon in sync with site settings. */
 export function SiteSeo() {
-  const { settings } = useContent();
+  const settingsQuery = useSiteSettings();
+  const settings = settingsQuery.data ?? DEFAULT_SETTINGS;
   const siteIconUrl = settings.siteIconUrl ?? '';
 
   useEffect(() => {
